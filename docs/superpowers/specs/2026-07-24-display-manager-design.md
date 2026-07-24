@@ -233,7 +233,23 @@ durations, and the 08:00–17:00 schedule, while leaving the old kiosk files int
 - Scraping platforms that forbid it — social support is adapter-based, official APIs only.
 - SVG uploads (no sanitizer in v1).
 
-## 11. Known trade-offs accepted
+## 11. Pre-implementation architecture review
+
+Reviewed 2026-07-24, before implementation. Findings and resolutions:
+
+| # | Severity | Finding | Resolution |
+|---|---|---|---|
+| 1 | High | Publishing clones every scene/zone into a new revision; unbounded growth over years, and media referenced only by an old revision is never reclaimable | `revision_retention` (default 25) + `playlist_revisions.keep` flag exempting the live and operator-pinned revisions |
+| 2 | High | Argon2id at 64 MB per hash is a memory-exhaustion vector on a 4 GB device; per-IP/per-account rate limits do not bound *concurrent* hashes | `max_concurrent_hash` semaphore (default 2), enforced independently of rate limiting |
+| 3 | High | Persisting `player_state` on every heartbeat means a flash write every few seconds forever | Status held in memory, flushed at most once per `heartbeat_persist_interval` (default 60 s) and immediately on an online/offline edge |
+| 4 | High | Schedule model assumed `on_time < off_time`, so it cannot express an evening window crossing midnight — precisely BeerMate's festival/stadium use case. 08:00–17:00 works, which is why this would have shipped unnoticed | `off_time <= on_time` now defines a midnight-crossing window; covered by tests |
+| 5 | High | SIL OFL 1.1 requires the licence accompany redistributed fonts; it was absent | `OFL-PlusJakartaSans.txt` and `OFL-Epilogue.txt` bundled alongside the WOFF2 files |
+| 6 | Medium | Unbounded concurrent managed-website captures multiply CPU cost in split-screen scenes | `max_managed_captures` (default 2); only currently-visible zones capture |
+| 7 | Medium | Nothing prevented deleting media still referenced by a scene | `idx_zones_content` index + publish-time validation + delete protection; player falls back to a branded slide if a reference vanishes at runtime |
+| 8 | Medium | SSE subscribers unbounded; forgotten admin tabs accumulate goroutines | `max_sse_clients` (default 16) |
+| 9 | Medium | `structuredClone` is Chrome 98; target is 97 | Pinned in the frontend build target and lint configuration rather than left to prose |
+
+## 12. Known trade-offs accepted
 
 | Decision | Cost | Why accepted |
 |---|---|---|

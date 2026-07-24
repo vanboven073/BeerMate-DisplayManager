@@ -2,7 +2,10 @@ module github.com/vanboven073/BeerMate-DisplayManager
 
 go 1.23.0
 
-require modernc.org/sqlite v1.34.4
+require (
+	golang.org/x/crypto v0.31.0
+	modernc.org/sqlite v1.34.4
+)
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
