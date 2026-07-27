@@ -1,0 +1,768 @@
+/*
+ * Player styles.
+ *
+ * Everything here targets a 1920x1080 screen viewed from several metres away, so
+ * type is large, contrast is high and nothing depends on hover or fine detail.
+ * Sizes use vw/vh units rather than px so the same scene reads correctly if the
+ * panel is ever changed.
+ */
+
+.bm-player {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bm-navy);
+  color: var(--bm-ivory);
+  /* The player is never scrolled or selected; a stray touch must not disturb it. */
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: none;
+}
+
+/* ---- scene and zone scaffolding --------------------------------------- */
+
+.bm-scene {
+  position: absolute;
+  inset: 0;
+}
+
+.bm-scene--fade {
+  animation: bm-fade-in 600ms ease-out;
+}
+.bm-scene--dissolve {
+  animation: bm-fade-in 900ms ease-in-out;
+}
+.bm-scene--slide_left {
+  animation: bm-slide-left 520ms cubic-bezier(0.2, 0, 0.2, 1);
+}
+.bm-scene--slide_up {
+  animation: bm-slide-up 520ms cubic-bezier(0.2, 0, 0.2, 1);
+}
+.bm-scene--none {
+  animation: none;
+}
+
+@keyframes bm-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes bm-slide-left {
+  from {
+    opacity: 0;
+    transform: translateX(4%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes bm-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(4%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.bm-zone {
+  position: absolute;
+  overflow: hidden;
+}
+
+.bm-zone__inner {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bm-zone__label {
+  position: absolute;
+  top: 1.2vh;
+  left: 1.2vw;
+  z-index: 5;
+  font-family: var(--bm-font-display);
+  font-weight: 600;
+  font-size: 1.4vh;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--bm-ivory);
+  background: rgba(14, 24, 33, 0.6);
+  padding: 0.4vh 0.9vw;
+  border-radius: var(--bm-radius-pill);
+}
+
+.bm-zone__empty {
+  width: 100%;
+  height: 100%;
+}
+
+/* ---- image ------------------------------------------------------------ */
+
+.bm-img {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: var(--bm-navy);
+}
+.bm-img__el {
+  width: 100%;
+  height: 100%;
+}
+.bm-img__overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  padding: 4vh 5vw;
+  /* A gradient rather than a flat bar: text stays legible over any image while
+     the photograph itself is barely obscured. */
+  background: linear-gradient(to top, rgba(14, 24, 33, 0.88), rgba(14, 24, 33, 0));
+}
+.bm-img__overlay--bottom {
+  bottom: 0;
+}
+.bm-img__overlay--top {
+  top: 0;
+  background: linear-gradient(to bottom, rgba(14, 24, 33, 0.88), rgba(14, 24, 33, 0));
+}
+.bm-img__overlay--center {
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(14, 24, 33, 0.72);
+  text-align: center;
+}
+.bm-img__title {
+  font-family: var(--bm-font-display);
+  font-weight: 800;
+  font-size: 5vh;
+  line-height: 1.1;
+}
+.bm-img__subtitle {
+  font-size: 2.6vh;
+  color: var(--bm-orange);
+  margin-top: 0.6vh;
+  font-weight: 600;
+}
+.bm-img__text {
+  font-size: 2.2vh;
+  margin-top: 1vh;
+  opacity: 0.9;
+}
+
+/* ---- video and website ------------------------------------------------- */
+
+.bm-video {
+  width: 100%;
+  height: 100%;
+  background: #000;
+}
+
+.bm-website {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: var(--bm-white);
+}
+
+/* ---- countdown --------------------------------------------------------- */
+
+.bm-countdown {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 4vh 4vw;
+  background: var(--bm-navy);
+}
+.bm-countdown__title {
+  font-family: var(--bm-font-display);
+  font-weight: 800;
+  font-size: 6vh;
+  line-height: 1.1;
+  margin-bottom: 1vh;
+}
+.bm-countdown__subtitle {
+  font-size: 2.6vh;
+  color: var(--bm-orange);
+  font-weight: 600;
+  margin-bottom: 4vh;
+}
+.bm-countdown__units {
+  display: flex;
+  gap: 2.5vw;
+  align-items: flex-start;
+}
+.bm-countdown__unit {
+  min-width: 12vh;
+}
+.bm-countdown__value {
+  font-family: var(--bm-font-display);
+  font-weight: 800;
+  font-size: 14vh;
+  line-height: 1;
+  color: var(--bm-ivory);
+  /* Tabular figures stop the layout jittering every second as digits change. */
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+.bm-countdown__label {
+  font-size: 2vh;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--bm-orange);
+  margin-top: 1vh;
+  font-weight: 600;
+}
+.bm-countdown--done .bm-countdown__message {
+  font-family: var(--bm-font-display);
+  font-weight: 800;
+  font-size: 9vh;
+  color: var(--bm-orange);
+}
+
+/* ---- clock ------------------------------------------------------------- */
+
+.bm-clock {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.bm-clock__title {
+  font-size: 2.4vh;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--bm-orange);
+  font-weight: 600;
+  margin-bottom: 1.5vh;
+}
+.bm-clock__time {
+  font-family: var(--bm-font-display);
+  font-weight: 800;
+  font-size: 18vh;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+.bm-clock__date {
+  font-size: 3vh;
+  color: var(--bm-text-muted);
+  margin-top: 1.5vh;
+}
+.bm-clock__subtitle {
+  font-size: 2.2vh;
+  margin-top: 1vh;
+  opacity: 0.75;
+}
+
+/* ---- KPI --------------------------------------------------------------- */
+
+.bm-kpi {
+  width: 100%;
+  height: 100%;
+  padding: 3vh 3vw;
+  display: flex;
+  flex-direction: column;
+}
+.bm-kpi__title {
+  font-family: var(--bm-font-display);
+  font-weight: 700;
+  font-size: 3.4vh;
+  margin-bottom: 2.5vh;
+}
+.bm-kpi__grid {
+  flex: 1;
+  display: grid;
+  gap: 1.6vw;
+  grid-template-columns: repeat(auto-fit, minmax(18vw, 1fr));
+  align-content: center;
+}
+.bm-kpi__grid[data-count='1'] {
+  grid-template-columns: 1fr;
+}
+.bm-kpi__grid[data-count='2'] {
+  grid-template-columns: repeat(2, 1fr);
+}
+.bm-kpi__grid[data-count='3'] {
+  grid-template-columns: repeat(3, 1fr);
+}
+.bm-kpi__card {
+  background: var(--bm-navy-90);
+  border-radius: var(--bm-radius-card);
+  padding: 3vh 2vw;
+  /* A left rule carries the status alongside the icon and text label, so the
+     meaning never rests on colour alone. */
+  border-left: 0.6vw solid var(--bm-text-faint);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.bm-kpi__card--good {
+  border-left-color: var(--bm-ok);
+}
+.bm-kpi__card--warn {
+  border-left-color: var(--bm-warn);
+}
+.bm-kpi__card--bad {
+  border-left-color: var(--bm-bad);
+}
+.bm-kpi__card--neutral {
+  border-left-color: var(--bm-orange);
+}
+.bm-kpi__label {
+  font-size: 2vh;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--bm-text-muted);
+  font-weight: 600;
+}
+.bm-kpi__value {
+  font-family: var(--bm-font-display);
+  font-weight: 800;
+  font-size: 8vh;
+  line-height: 1.05;
+  margin-top: 0.8vh;
+  font-variant-numeric: tabular-nums;
+}
+.bm-kpi__unit {
+  font-size: 0.4em;
+  margin-left: 0.25em;
+  color: var(--bm-orange);
+}
+.bm-kpi__trend {
+  display: flex;
+  align-items: center;
+  gap: 0.8vw;
+  font-size: 1.9vh;
+  color: var(--bm-text-muted);
+  margin-top: 0.8vh;
+}
+.bm-kpi__desc {
+  font-size: 1.8vh;
+  color: var(--bm-text-faint);
+  margin-top: 0.6vh;
+}
+
+/* ---- QR ---------------------------------------------------------------- */
+
+.bm-qr {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2vh;
+  padding: 3vh 3vw;
+  text-align: center;
+}
+.bm-qr__heading {
+  font-family: var(--bm-font-display);
+  font-weight: 700;
+  font-size: 3.6vh;
+}
+.bm-qr__img {
+  /* A quiet zone of white around the code is required for reliable scanning. */
+  background: var(--bm-white);
+  padding: 2vh;
+  border-radius: var(--bm-radius-card);
+  max-height: 55vh;
+  width: auto;
+}
+.bm-qr__desc {
+  font-size: 2.2vh;
+  color: var(--bm-text-muted);
+  max-width: 40vw;
+}
+
+/* ---- announcement, image+text, text ------------------------------------ */
+
+.bm-announce,
+.bm-text {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2vh;
+  padding: 5vh 6vw;
+  text-align: center;
+}
+.bm-announce--left,
+.bm-text--left {
+  align-items: flex-start;
+  text-align: left;
+}
+.bm-announce--right,
+.bm-text--right {
+  align-items: flex-end;
+  text-align: right;
+}
+.bm-announce__heading,
+.bm-text__heading {
+  font-family: var(--bm-font-display);
+  font-weight: 800;
+  font-size: 7vh;
+  line-height: 1.08;
+}
+.bm-announce--s .bm-announce__heading {
+  font-size: 4.5vh;
+}
+.bm-announce--m .bm-announce__heading {
+  font-size: 6vh;
+}
+.bm-announce--xl .bm-announce__heading {
+  font-size: 9vh;
+}
+.bm-announce__body,
+.bm-text__body {
+  font-size: 3vh;
+  line-height: 1.45;
+  max-width: 60vw;
+  color: var(--bm-text-muted);
+  margin: 0;
+}
+.bm-announce__cta {
+  margin-top: 2vh;
+  background: var(--bm-orange);
+  color: var(--bm-white);
+  font-family: var(--bm-font-display);
+  font-weight: 700;
+  font-size: 2.6vh;
+  padding: 1.6vh 3vw;
+  border-radius: var(--bm-radius-button);
+}
+.bm-announce__img {
+  max-height: 34vh;
+  border-radius: var(--bm-radius-card);
+  object-fit: contain;
+}
+.bm-announce__logo {
+  margin-bottom: 2vh;
+}
+
+.bm-imagetext {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: stretch;
+}
+.bm-imagetext--image_right {
+  flex-direction: row-reverse;
+}
+.bm-imagetext--centered_caption,
+.bm-imagetext--header_image_footer,
+.bm-imagetext--logo_title_body {
+  flex-direction: column;
+}
+.bm-imagetext__media {
+  flex: 1 1 50%;
+  overflow: hidden;
+}
+.bm-imagetext__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.bm-imagetext__body {
+  flex: 1 1 50%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 5vh 4vw;
+  gap: 1.5vh;
+}
+.bm-imagetext__heading {
+  font-family: var(--bm-font-display);
+  font-weight: 800;
+  font-size: 6vh;
+  line-height: 1.1;
+}
+.bm-imagetext__subtitle {
+  font-size: 2.8vh;
+  color: var(--bm-orange);
+  font-weight: 600;
+}
+.bm-imagetext__text {
+  font-size: 2.4vh;
+  line-height: 1.5;
+  color: var(--bm-text-muted);
+}
+.bm-imagetext--full_background {
+  position: relative;
+}
+.bm-imagetext--full_background .bm-imagetext__media {
+  position: absolute;
+  inset: 0;
+}
+.bm-imagetext--full_background .bm-imagetext__body {
+  position: relative;
+  background: rgba(14, 24, 33, 0.7);
+  width: 100%;
+}
+
+/* ---- ticker ------------------------------------------------------------ */
+
+.bm-ticker {
+  width: 100%;
+  height: 100%;
+  background: var(--bm-orange);
+  color: var(--bm-white);
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  position: relative;
+}
+.bm-ticker__track {
+  display: inline-flex;
+  white-space: nowrap;
+  animation-name: bm-ticker-scroll;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  /* transform-only animation stays on the compositor, which matters on a Jetson
+     where a layout-driven marquee would cost real CPU continuously. */
+  will-change: transform;
+}
+.bm-ticker__text {
+  font-family: var(--bm-font-display);
+  font-weight: 700;
+  font-size: 4vh;
+  padding-right: 2vw;
+}
+@keyframes bm-ticker-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+/* With reduced motion the ticker stops scrolling and shows static text. */
+@media (prefers-reduced-motion: reduce) {
+  .bm-ticker__track {
+    animation: none;
+    transform: none;
+  }
+}
+
+/* ---- event ------------------------------------------------------------- */
+
+.bm-event {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+.bm-event__bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.35;
+}
+.bm-event__inner {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 1.6vh;
+  padding: 5vh 5vw;
+}
+.bm-event__title {
+  font-family: var(--bm-font-display);
+  font-weight: 800;
+  font-size: 7.5vh;
+  line-height: 1.08;
+}
+.bm-event__subtitle {
+  font-size: 3vh;
+  color: var(--bm-orange);
+  font-weight: 600;
+}
+.bm-event__meta {
+  display: flex;
+  gap: 2.5vw;
+  font-size: 2.4vh;
+  color: var(--bm-text-muted);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.bm-event__countdown {
+  display: flex;
+  gap: 1.5vw;
+  margin-top: 2vh;
+  font-family: var(--bm-font-display);
+  font-weight: 800;
+  font-size: 5vh;
+  font-variant-numeric: tabular-nums;
+  color: var(--bm-orange);
+}
+
+/* ---- standby, boot, offline, fallback, emergency ------------------------ */
+
+.bm-standby,
+.bm-boot {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5vh;
+  background: var(--bm-navy);
+  color: var(--bm-ivory);
+}
+.bm-standby__mark {
+  opacity: 0.5;
+  margin-bottom: 3vh;
+}
+.bm-standby__time {
+  font-family: var(--bm-font-display);
+  font-weight: 800;
+  font-size: 14vh;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+.bm-standby__date {
+  font-size: 3vh;
+  color: var(--bm-text-muted);
+}
+.bm-standby__message {
+  font-size: 2.2vh;
+  color: var(--bm-text-faint);
+  margin-top: 2vh;
+}
+.bm-boot__mark {
+  animation: bm-pulse 1.8s ease-in-out infinite;
+}
+.bm-boot__text {
+  color: var(--bm-text-muted);
+  font-size: 2.4vh;
+}
+@keyframes bm-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.bm-offline {
+  position: fixed;
+  right: 1.5vw;
+  bottom: 1.5vh;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 0.7vw;
+  background: rgba(14, 24, 33, 0.85);
+  border: 1px solid var(--bm-orange);
+  color: var(--bm-ivory);
+  border-radius: var(--bm-radius-pill);
+  padding: 0.9vh 1.4vw;
+  font-size: 1.7vh;
+  font-weight: 600;
+}
+.bm-offline__dot {
+  width: 1vh;
+  height: 1vh;
+  border-radius: 50%;
+  background: var(--bm-orange);
+  animation: bm-pulse 2s ease-in-out infinite;
+}
+
+.bm-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2vh;
+  background: var(--bm-navy-90);
+  color: var(--bm-text-muted);
+  text-align: center;
+  padding: 3vh 3vw;
+}
+.bm-fallback__mark {
+  opacity: 0.35;
+}
+.bm-fallback__text {
+  font-size: 2.2vh;
+  margin: 0;
+}
+
+.bm-emergency {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(14, 24, 33, 0.94);
+}
+.bm-emergency__inner {
+  max-width: 72vw;
+  text-align: center;
+  border-radius: var(--bm-radius-card);
+  padding: 7vh 6vw;
+  border: 0.5vh solid var(--bm-orange);
+}
+.bm-emergency--warning .bm-emergency__inner {
+  border-color: var(--bm-warn);
+}
+.bm-emergency--critical .bm-emergency__inner {
+  border-color: var(--bm-bad);
+}
+.bm-emergency__severity {
+  font-size: 2.4vh;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  font-weight: 700;
+  color: var(--bm-orange);
+  margin-bottom: 2vh;
+}
+.bm-emergency--warning .bm-emergency__severity {
+  color: var(--bm-warn);
+}
+.bm-emergency--critical .bm-emergency__severity {
+  color: var(--bm-bad);
+}
+.bm-emergency__heading {
+  font-family: var(--bm-font-display);
+  font-weight: 800;
+  font-size: 8vh;
+  line-height: 1.08;
+  color: var(--bm-ivory);
+}
+.bm-emergency__body {
+  font-size: 3vh;
+  line-height: 1.45;
+  color: var(--bm-text-muted);
+  margin-top: 2.5vh;
+}
