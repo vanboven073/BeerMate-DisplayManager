@@ -393,6 +393,22 @@ func (s *Server) handleMedia(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		saved = append(saved, item)
+
+		// A PDF is rasterised into per-page images at import time, so the player
+		// only ever shows pre-rendered PNGs and never runs a PDF renderer during
+		// playback. Failure here is non-fatal: the PDF is stored, and the warning
+		// tells the operator what to install.
+		if item.Kind == media.KindPDF {
+			conv := media.NewPDFConverter(s.deps.Media, s.deps.Config.PDFToPPMPath, s.deps.Config.MaxPDFPages)
+			pctx, cancel := timeoutCtx(ctx, 3*time.Minute)
+			pages, perr := conv.Convert(pctx, item, u.Username)
+			cancel()
+			if perr != nil {
+				s.deps.Log.Warn("PDF page conversion failed", "media", item.ID, "error", perr)
+			} else {
+				saved = append(saved, pages...)
+			}
+		}
 	}
 
 	if len(saved) == 0 {
