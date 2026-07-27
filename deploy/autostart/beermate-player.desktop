@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=BeerMate Player
+Comment=Fullscreen BeerMate signage player
+# Launches Chromium in kiosk mode pointed at the local player. The wrapper script
+# waits for the backend and the X session, and relaunches Chromium if it exits,
+# so a transient crash does not leave a blank screen.
+Exec=/opt/BeerMateDisplayManager/scripts/run-player.sh
+X-GNOME-Autostart-enabled=true
+NoDisplay=false
+Terminal=false
+# A short delay lets the graphical session settle before Chromium starts.
+X-GNOME-Autostart-Delay=8

@@ -1,0 +1,60 @@
+[Unit]
+Description=BeerMate Display Manager
+Documentation=https://github.com/vanboven073/BeerMate-DisplayManager
+# The service needs the network up to be reachable over Tailscale, but must not
+# block boot forever if the network is slow: After (ordering) without Requires.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=beermate
+Group=beermate
+
+# The binary reads its config from /etc and writes data to /var/lib.
+WorkingDirectory=/opt/BeerMateDisplayManager
+Environment=BEERMATE_CONFIG_DIR=/etc/beermate-display-manager
+Environment=BEERMATE_DATA_DIR=/var/lib/beermate-display-manager
+# DISPLAY and XAUTHORITY let the DPMS controller talk to the graphical session
+# that the beermate user is auto-logged into. Adjust XAUTHORITY if the display
+# manager places the cookie elsewhere.
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/beermate/.Xauthority
+
+ExecStart=/opt/BeerMateDisplayManager/beermate-display-manager
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Restart on any unclean exit, with a short delay so a crash loop backs off a
+# little rather than hammering. An unattended display should recover on its own.
+Restart=on-failure
+RestartSec=5
+# If it fails 5 times in 60s, stop trying and let an operator look; otherwise a
+# genuinely broken build would spin forever.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+# Give in-flight uploads and the managed browser time to shut down cleanly.
+TimeoutStopSec=30
+KillSignal=SIGTERM
+
+# Journal logging.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=beermate-display-manager
+
+# ---- Hardening -----------------------------------------------------------
+# Kept to directives supported by the systemd shipped with Ubuntu 18.04
+# (systemd 237). Newer options (ProtectClock, SystemCallFilter sets, etc.) are
+# deliberately omitted so the unit does not fail to parse on the Jetson.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+# The service must write its data dir and read its config dir.
+ReadWritePaths=/var/lib/beermate-display-manager
+ReadOnlyPaths=/etc/beermate-display-manager
+ProtectControlGroups=true
+ProtectKernelTunables=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=multi-user.target
