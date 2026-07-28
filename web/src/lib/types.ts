@@ -307,6 +307,46 @@ export interface AnnouncementConfig {
   qr_data?: string;
 }
 
+export interface WebsiteConfig {
+  zoom?: number;
+  refresh_on_show?: boolean;
+}
+
+export interface ImageTextConfig {
+  template: string;
+  heading?: string;
+  subtitle?: string;
+  body?: string;
+  image_id?: number;
+  show_logo?: boolean;
+  cta?: string;
+  qr_data?: string;
+  background?: string;
+  fit?: string;
+}
+
+export interface SocialConfig {
+  feed_id: number;
+  template: string;
+  max_items?: number;
+  show_meta?: boolean;
+}
+
+/** One moderated, cached post as the player receives it. */
+export interface SocialPost {
+  id: number;
+  feed_id: number;
+  author: string;
+  author_handle: string;
+  avatar_url: string;
+  text: string;
+  media_url: string;
+  media_kind: string;
+  permalink: string;
+  posted_at?: string;
+  pinned: boolean;
+}
+
 export interface TextConfig {
   heading?: string;
   body?: string;

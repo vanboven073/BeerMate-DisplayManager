@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { api, ApiError } from '../../lib/api';
 import type { MediaItem, User } from '../../lib/types';
 import { Card, EmptyState, ErrorNote, formatBytes, formatWhen } from '../ui';
+import { SceneEditor, type Prefill } from '../scene/SceneEditor';
 
 interface MediaResponse {
   media: MediaItem[];
@@ -12,7 +13,9 @@ interface MediaResponse {
 export function MediaView({ user, refreshKey }: { user: User; refreshKey: number }) {
   const [data, setData] = useState<MediaResponse | null>(null);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [prefill, setPrefill] = useState<Prefill | null>(null);
   const fileInput = useRef<HTMLInputElement | null>(null);
 
   const canEdit = user.role === 'editor' || user.role === 'admin';
@@ -119,6 +122,11 @@ export function MediaView({ user, refreshKey }: { user: User; refreshKey: number
       </header>
 
       {error && <ErrorNote message={error} />}
+      {notice && (
+        <div class="bm-alert bm-alert--ok" role="status">
+          {notice}
+        </div>
+      )}
 
       <p class="bm-small bm-muted">
         Accepted: JPG, PNG, WebP, GIF, MP4 (H.264), WebM and PDF. SVG is not accepted because it can
@@ -161,18 +169,51 @@ export function MediaView({ user, refreshKey }: { user: User; refreshKey: number
                   {item.warning && <div class="bm-media__warn bm-small">{item.warning}</div>}
                 </div>
                 {canEdit && (
-                  <button
-                    class="bm-btn bm-btn--danger bm-btn--sm"
-                    type="button"
-                    onClick={() => remove(item)}
-                  >
-                    Delete
-                  </button>
+                  <div class="bm-media__actions">
+                    {(item.kind === 'image' || item.kind === 'video') && (
+                      <button
+                        class="bm-btn bm-btn--secondary bm-btn--sm"
+                        type="button"
+                        onClick={() =>
+                          setPrefill({
+                            name: item.original_name || `Untitled ${item.kind}`,
+                            contentType: item.kind === 'video' ? 'video' : 'image',
+                            contentRef: String(item.id),
+                          })
+                        }
+                      >
+                        Add to playlist
+                      </button>
+                    )}
+                    <button
+                      class="bm-btn bm-btn--danger bm-btn--sm"
+                      type="button"
+                      onClick={() => remove(item)}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 )}
               </li>
             ))}
           </ul>
         </Card>
+      )}
+
+      {prefill && canEdit && (
+        <SceneEditor
+          scene={null}
+          prefill={prefill}
+          onClose={() => setPrefill(null)}
+          onSaved={(w) => {
+            setPrefill(null);
+            setNotice(
+              w
+                ? `Scene saved, but it is not publishable yet: ${w}`
+                : 'Scene added to the playlist. Go to Playlist and select "Publish to screen".',
+            );
+          }}
+        />
       )}
     </div>
   );

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'preact/hooks';
 import { api, ApiError } from '../../lib/api';
 import type { User } from '../../lib/types';
 import { Card, EmptyState, ErrorNote, StatusPill, formatWhen, type Tone } from '../ui';
+import { SceneEditor, type Prefill } from '../scene/SceneEditor';
 
 interface Website {
   id: number;
@@ -40,6 +41,7 @@ export function WebsitesView({ user, refreshKey }: { user: User; refreshKey: num
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [showAdd, setShowAdd] = useState(false);
+  const [prefill, setPrefill] = useState<Prefill | null>(null);
   const canEdit = user.role === 'editor' || user.role === 'admin';
 
   const load = useCallback(async (signal?: AbortSignal) => {
@@ -166,6 +168,15 @@ export function WebsitesView({ user, refreshKey }: { user: User; refreshKey: num
 
             {canEdit && (
               <div class="bm-row bm-row--gap bm-row--wrap">
+                <button
+                  class="bm-btn bm-btn--secondary bm-btn--sm"
+                  type="button"
+                  onClick={() =>
+                    setPrefill({ name: site.name, contentType: 'website', contentRef: String(site.id) })
+                  }
+                >
+                  Add to playlist
+                </button>
                 {site.requires_auth && (
                   <>
                     <button class="bm-btn bm-btn--secondary bm-btn--sm" type="button"
@@ -200,6 +211,22 @@ export function WebsitesView({ user, refreshKey }: { user: User; refreshKey: num
             )}
           </Card>
         ))
+      )}
+
+      {prefill && canEdit && (
+        <SceneEditor
+          scene={null}
+          prefill={prefill}
+          onClose={() => setPrefill(null)}
+          onSaved={(w) => {
+            setPrefill(null);
+            setNotice(
+              w
+                ? `Scene saved, but it is not publishable yet: ${w}`
+                : 'Scene added to the playlist. Go to Playlist and select "Publish to screen".',
+            );
+          }}
+        />
       )}
     </div>
   );

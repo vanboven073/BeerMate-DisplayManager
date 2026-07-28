@@ -7,6 +7,8 @@ import type {
   ImageConfig,
   KPIConfig,
   QRConfig,
+  SocialConfig,
+  SocialPost,
   TextConfig,
   TickerConfig,
   VideoConfig,
@@ -14,6 +16,7 @@ import type {
   ZoneStyle,
 } from '../lib/types';
 import { parseConfig } from '../lib/types';
+import { api } from '../lib/api';
 import { ZoneFallback } from './Chrome';
 import { countdownParts, formatInZone, type ServerClock } from './useServerClock';
 
@@ -72,6 +75,8 @@ function ZoneContent({ zone, clock, timezone }: Props) {
       return <AnnouncementZone zone={zone} />;
     case 'image_text':
       return <ImageTextZone zone={zone} />;
+    case 'social':
+      return <SocialZone zone={zone} />;
     case 'text':
       return <TextZone zone={zone} />;
     case 'ticker':
@@ -330,6 +335,96 @@ function KPIZone({ zone }: { zone: Zone }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/* ---- social ----------------------------------------------------------- */
+
+/**
+ * Approved posts from one social feed.
+ *
+ * Posts are fetched rather than delivered with the playlist because moderation
+ * changes far more often than the playlist does, and a moderator hiding a post
+ * should not require republishing. The server sends an SSE `social` event on a
+ * change, which refreshes player state; the interval here is the fallback for a
+ * zone that stays mounted across such a refresh.
+ */
+function SocialZone({ zone }: { zone: Zone }) {
+  const cfg = parseConfig<SocialConfig>(zone.config, { feed_id: 0, template: 'cards' });
+  const [posts, setPosts] = useState<SocialPost[] | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  const feedID = cfg.feed_id;
+  const limit = cfg.max_items && cfg.max_items > 0 ? cfg.max_items : 6;
+
+  useEffect(() => {
+    if (!feedID) return;
+    let cancelled = false;
+    const ctrl = new AbortController();
+
+    async function load() {
+      try {
+        const res = await api.player.get<{ posts: SocialPost[] }>(
+          `/api/v1/player/social/${feedID}?limit=${limit}`,
+          ctrl.signal,
+        );
+        if (cancelled) return;
+        setPosts(res.posts || []);
+        setFailed(false);
+      } catch {
+        if (cancelled) return;
+        // Keep whatever is already on screen: a transient fetch failure should
+        // not blank a zone that is currently showing valid posts.
+        setFailed(true);
+      }
+    }
+
+    void load();
+    const timer = window.setInterval(() => void load(), 60000);
+    return () => {
+      cancelled = true;
+      ctrl.abort();
+      window.clearInterval(timer);
+    };
+  }, [feedID, limit]);
+
+  if (!feedID) return <ZoneFallback reason="No social feed selected" />;
+  if (posts === null) {
+    return failed ? <ZoneFallback reason="Social feed unavailable" /> : <div class="bm-social bm-social--loading" />;
+  }
+  if (posts.length === 0) return <ZoneFallback reason="No approved posts yet" />;
+
+  const template = cfg.template || 'cards';
+  const shown = posts.slice(0, limit);
+
+  return (
+    <div class={`bm-social bm-social--${template}`}>
+      {shown.map((post) => (
+        <article class="bm-social__post" key={post.id}>
+          {post.media_url && post.media_kind === 'image' && (
+            <div class="bm-social__media">
+              <img src={post.media_url} alt="" loading="lazy" />
+            </div>
+          )}
+          <div class="bm-social__body">
+            {cfg.show_meta !== false && (
+              <header class="bm-social__meta">
+                {post.avatar_url && <img class="bm-social__avatar" src={post.avatar_url} alt="" />}
+                <span class="bm-social__author">{post.author || post.author_handle}</span>
+                {post.posted_at && (
+                  <time class="bm-social__time" dateTime={post.posted_at}>
+                    {new Date(post.posted_at).toLocaleDateString()}
+                  </time>
+                )}
+              </header>
+            )}
+            {/* Post text arrives HTML-stripped from the server and is rendered
+                as text, never as markup. */}
+            {post.text && <p class="bm-social__text">{post.text}</p>}
+          </div>
+        </article>
+      ))}
     </div>
   );
 }

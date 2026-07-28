@@ -6,11 +6,12 @@ phase. Not a diary.
 ## Current
 
 - **Branch:** `feature/display-manager-initial-implementation`
-- **Phase:** code review #2 complete and remediated; ready for review #3 (strict).
+- **Phase:** scene editor added after first on-device run showed the playlist
+  could never be populated; ready for code review #3 (strict).
 - **Last production build:** linux/arm64, verified aarch64 ELF (machine 0xb7),
   12.3 MB stripped, frontend embedded.
 - **Backend tests:** passing (`go test ./...`), gofmt and `go vet` clean.
-- **Frontend:** typecheck clean, 7 unit tests passing, ESLint clean.
+- **Frontend:** typecheck clean, 47 unit tests passing, ESLint clean.
 
 ## Completed features
 
@@ -35,6 +36,10 @@ phase. Not a diary.
 - Admin dashboard: overview, playlist, media, websites, social, schedule,
   backups, settings; login + first-run bootstrap. Full BeerMate branding,
   accessible (keyboard reorder, non-colour status, focus-visible, reduced motion).
+- Scene editor (`web/src/admin/scene/`): create and edit scenes across all 16
+  layouts and every content type, with per-type forms mirroring the Go
+  validators, media/website/feed pickers, zone styling, custom-grid rects and
+  inline server field errors. "Add to playlist" shortcuts on Media and Websites.
 - Player: single persistent page, all zone renderers, transitions, offline
   cache, resource cleanup, standby, emergency overlay, branded fallbacks.
 - Deployment: systemd unit, autostart, 12 scripts (`set -Eeuo pipefail`, all
@@ -98,6 +103,29 @@ Also fixed: non-constant-time player-token comparison; a `writeError` returning 
 error envelope under HTTP 200; dead `version` placeholder and an unused-import
 prop in `handlers_content.go`; `truncateStr` splitting UTF-8 runes; a stale
 "admin-only" comment in `routes.go`.
+
+## Scene editor (first on-device run)
+
+The first real deployment could not publish anything. The publish path was never
+at fault: `POST /api/v1/scenes` existed, was role-guarded and tested, but nothing
+in the SPA ever called it — the only two callers of `/api/v1/scenes` were
+`duplicate` and `delete`. With no way to create a scene, the draft revision
+stayed empty, so the publish button rendered disabled and the store would have
+refused with "no enabled scenes; the display would be blank".
+
+Added `web/src/admin/scene/` (model, fields, pickers, per-type content forms,
+ZoneForm, SceneEditor) plus entry points in the playlist, media and website
+views. The model layer is the single place the `DisallowUnknownFields` contract
+with `internal/content/types.go` is expressed; a test asserts every default
+config against the Go struct field lists.
+
+Also fixed while tracing it: `ZoneRenderer` had no `case 'social'`, so a social
+zone rendered "Unsupported content type" despite the adapters, moderation and
+`/api/v1/player/social/{id}` all being implemented. Added `SocialZone`.
+
+Verified end-to-end against a local instance: create → publish → player state
+carries the revision; split-screen, edit-with-layout-switch (position and
+stable_id preserved) and the 422 field-error path all confirmed.
 
 ## Remaining
 

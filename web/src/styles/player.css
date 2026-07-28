@@ -766,3 +766,107 @@
   color: var(--bm-text-muted);
   margin-top: 2.5vh;
 }
+
+/* ---- social feed ------------------------------------------------------- */
+
+.bm-social {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  gap: 1.5vmin;
+  padding: 1.5vmin;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.bm-social--loading {
+  opacity: 0;
+}
+
+.bm-social__post {
+  display: flex;
+  flex-direction: column;
+  gap: 1vmin;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 1.4vmin;
+  padding: 1.6vmin;
+  overflow: hidden;
+  min-width: 0;
+}
+.bm-social__media {
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: 1vmin;
+}
+.bm-social__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.bm-social__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8vmin;
+  min-height: 0;
+}
+.bm-social__meta {
+  display: flex;
+  align-items: center;
+  gap: 1vmin;
+  font-size: 1.6vmin;
+  color: rgba(246, 241, 239, 0.72);
+}
+.bm-social__avatar {
+  width: 3.4vmin;
+  height: 3.4vmin;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: 0 0 auto;
+}
+.bm-social__author {
+  font-weight: 700;
+  color: var(--bm-ivory);
+}
+.bm-social__text {
+  margin: 0;
+  font-size: 2.1vmin;
+  line-height: 1.35;
+  overflow: hidden;
+}
+
+/* Cards, grid and wall tile the posts; the rest stack in a single column. */
+.bm-social--cards,
+.bm-social--grid,
+.bm-social--wall {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(28%, 1fr));
+  align-content: start;
+}
+.bm-social--vertical,
+.bm-social--sidebar,
+.bm-social--latest {
+  flex-direction: column;
+}
+.bm-social--single,
+.bm-social--fullscreen {
+  flex-direction: column;
+}
+.bm-social--single .bm-social__text,
+.bm-social--fullscreen .bm-social__text {
+  font-size: 3.4vmin;
+}
+.bm-social--single .bm-social__post,
+.bm-social--fullscreen .bm-social__post {
+  flex: 1 1 auto;
+}
+.bm-social--ticker {
+  flex-direction: row;
+  align-items: center;
+}
+.bm-social--ticker .bm-social__post {
+  flex: 0 0 auto;
+  flex-direction: row;
+  align-items: center;
+  background: none;
+  padding: 0 2vmin;
+}

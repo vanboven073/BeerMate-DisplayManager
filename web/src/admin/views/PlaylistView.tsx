@@ -2,35 +2,22 @@ import { useCallback, useEffect, useState } from 'preact/hooks';
 import { api, ApiError } from '../../lib/api';
 import type { Revision, Scene, User } from '../../lib/types';
 import { Card, EmptyState, ErrorNote, StatusPill, formatDuration, formatWhen } from '../ui';
+import { SceneEditor } from '../scene/SceneEditor';
+import { CONTENT_LABEL } from '../scene/model';
 
 interface PlaylistResponse {
   revision: Revision;
   scenes: Scene[];
 }
 
-const CONTENT_LABEL: Record<string, string> = {
-  image: 'Image',
-  video: 'Video',
-  website: 'Website',
-  countdown: 'Countdown',
-  clock: 'Clock',
-  kpi: 'KPI',
-  qr: 'QR code',
-  announcement: 'Announcement',
-  image_text: 'Image + text',
-  social: 'Social feed',
-  text: 'Text',
-  ticker: 'Ticker',
-  event: 'Event',
-  empty: 'Empty',
-  fallback: 'Fallback',
-};
-
 export function PlaylistView({ user, refreshKey }: { user: User; refreshKey: number }) {
   const [data, setData] = useState<PlaylistResponse | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
+  const [warning, setWarning] = useState('');
+  /** null = closed; a Scene = editing it; 'new' = creating one. */
+  const [editing, setEditing] = useState<Scene | 'new' | null>(null);
 
   const canEdit = user.role === 'editor' || user.role === 'admin';
 
@@ -152,6 +139,9 @@ export function PlaylistView({ user, refreshKey }: { user: User; refreshKey: num
         </div>
         {canEdit && (
           <div class="bm-view__actions">
+            <button class="bm-btn bm-btn--secondary" type="button" onClick={() => setEditing('new')}>
+              New scene
+            </button>
             <button
               class="bm-btn bm-btn--primary"
               type="button"
@@ -170,6 +160,11 @@ export function PlaylistView({ user, refreshKey }: { user: User; refreshKey: num
           {notice}
         </div>
       )}
+      {warning && (
+        <div class="bm-alert bm-alert--warn" role="status">
+          {warning}
+        </div>
+      )}
       {invalidCount > 0 && (
         <div class="bm-alert bm-alert--warn" role="status">
           {invalidCount} enabled scene{invalidCount === 1 ? ' has' : 's have'} validation errors and
@@ -181,6 +176,13 @@ export function PlaylistView({ user, refreshKey }: { user: User; refreshKey: num
         <EmptyState
           title="No scenes yet"
           body="A scene is one full screen. Add images, a countdown, a dashboard or a split-screen composition, then publish to put it on the display."
+          action={
+            canEdit ? (
+              <button class="bm-btn bm-btn--primary" type="button" onClick={() => setEditing('new')}>
+                Create the first scene
+              </button>
+            ) : undefined
+          }
         />
       ) : (
         <Card>
@@ -243,6 +245,9 @@ export function PlaylistView({ user, refreshKey }: { user: User; refreshKey: num
 
                 {canEdit && (
                   <div class="bm-scene-row__actions">
+                    <button class="bm-btn bm-btn--secondary bm-btn--sm" type="button" onClick={() => setEditing(scene)}>
+                      Edit
+                    </button>
                     <button class="bm-btn bm-btn--ghost bm-btn--sm" type="button" onClick={() => toggle(scene)}>
                       {scene.enabled ? 'Disable' : 'Enable'}
                     </button>
@@ -258,6 +263,21 @@ export function PlaylistView({ user, refreshKey }: { user: User; refreshKey: num
             ))}
           </ol>
         </Card>
+      )}
+
+      {editing && canEdit && (
+        <SceneEditor
+          scene={editing === 'new' ? null : editing}
+          onClose={() => setEditing(null)}
+          onSaved={(w) => {
+            setEditing(null);
+            setWarning(
+              w ? `${w} Open the scene to fix it, or disable it before publishing.` : '',
+            );
+            setNotice(w ? '' : 'Scene saved. Select "Publish to screen" to put it on the display.');
+            void load();
+          }}
+        />
       )}
     </div>
   );
