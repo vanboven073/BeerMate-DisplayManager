@@ -3,6 +3,12 @@
 Short, copy-pastable commands for the QBee root shell. Avoid pasting large text
 blocks; everything complex lives in `scripts/`.
 
+> Deploying for the first time? Use the full runbook in
+> [deployment-guide.md](deployment-guide.md) — it covers building the release on
+> the workstation, assembling the bundle the installer expects, the Xvfb virtual
+> display, first-run bootstrap and an acceptance checklist. This page is the
+> cheat sheet for when you already know the flow.
+
 ## Target
 
 Original NVIDIA Jetson Nano · Ubuntu 18.04 · ARM64 · Chromium ~97 · ethernet to a

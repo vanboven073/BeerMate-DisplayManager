@@ -57,8 +57,11 @@ sudo ./scripts/verify-installation.sh
 ```
 
 Then, from your laptop over Tailscale, open `http://<tailscale-ip>:8080/admin`
-and create the administrator. Full steps, including Tailscale setup and the
-legacy migration, are in [docs/jetson-deployment.md](docs/jetson-deployment.md).
+and create the administrator.
+
+The complete step-by-step procedure — building the release, assembling the
+bundle, Tailscale, Xvfb, first-run bootstrap, the legacy migration, updates and
+rollback — is in [docs/deployment-guide.md](docs/deployment-guide.md).
 
 ## Documentation
 
@@ -66,7 +69,8 @@ legacy migration, are in [docs/jetson-deployment.md](docs/jetson-deployment.md).
 |---|---|
 | [docs/architecture.md](docs/architecture.md) | System design, data model, request flow |
 | [docs/security.md](docs/security.md) | Threat model and every control |
-| [docs/jetson-deployment.md](docs/jetson-deployment.md) | Install, Tailscale, migration, updates |
+| [docs/deployment-guide.md](docs/deployment-guide.md) | **Step-by-step deployment runbook** (start here) |
+| [docs/jetson-deployment.md](docs/jetson-deployment.md) | Short command cheat sheet for the device |
 | [docs/authenticated-websites.md](docs/authenticated-websites.md) | The manual-login / persistent-profile flow |
 | [docs/social-feeds.md](docs/social-feeds.md) | Adapters, tokens, moderation |
 | [docs/split-screen.md](docs/split-screen.md) | Scenes, zones, the 16 layouts |
