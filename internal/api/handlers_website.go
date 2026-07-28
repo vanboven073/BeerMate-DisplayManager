@@ -168,8 +168,17 @@ func (s *Server) handleWebsiteAction(w http.ResponseWriter, r *http.Request, id 
 		ok, verr := s.deps.Browser.Validate(vctx, site.ProfileID, site.URL, site.LoginURLPattern)
 		cancel()
 		if verr != nil {
+			// The login itself succeeded and the profile is persisted, so this is a
+			// 200 with an unvalidated state — not an error response. Returning the
+			// error envelope under a 200 gave the client a body it reads as success
+			// with no ok field and an error string it never surfaces.
 			_ = s.deps.Websites.SetSessionState(ctx, id, store.SessionError, "validation could not run")
-			writeError(w, http.StatusOK, "login saved, but validation could not run; try Validate again")
+			writeJSON(w, http.StatusOK, map[string]any{
+				"ok":            true,
+				"session_state": store.SessionError,
+				"validated":     false,
+				"message":       "Login saved, but validation could not run. Try Validate again.",
+			})
 			return
 		}
 		if !ok {

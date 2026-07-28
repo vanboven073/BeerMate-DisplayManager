@@ -4,10 +4,12 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"net"
 	"net/http"
 	"path"
 	"strings"
 
+	"github.com/vanboven073/BeerMate-DisplayManager/internal/auth"
 	"github.com/vanboven073/BeerMate-DisplayManager/internal/web"
 )
 
@@ -99,6 +101,13 @@ func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request, assets fs.FS
 // The player token is embedded in the player document rather than issued over
 // the API, because the player runs unattended with no login. Injecting it into
 // the admin shell as well would hand it to every browser on the tailnet.
+//
+// The document itself is unauthenticated, so the token is only written into it
+// for callers that are already entitled to it: the local Chromium kiosk, which
+// reaches the server over loopback, or a signed-in operator previewing the player
+// remotely. Without that restriction the token authenticates nothing at all —
+// anyone on the tailnet could fetch /player, read it out of the HTML, and use it
+// to pull media and managed screenshots of authenticated websites.
 func (s *Server) serveSPAShell(w http.ResponseWriter, r *http.Request, assets fs.FS, isPlayer bool) {
 	raw, err := fs.ReadFile(assets, "index.html")
 	if err != nil {
@@ -108,7 +117,7 @@ func (s *Server) serveSPAShell(w http.ResponseWriter, r *http.Request, assets fs
 	html := string(raw)
 
 	token := ""
-	if isPlayer {
+	if isPlayer && s.mayReceivePlayerToken(r) {
 		token = s.playerToken
 	}
 	// A single placeholder the build emits; replaced per request.
@@ -131,6 +140,34 @@ func modeFor(isPlayer bool) string {
 		return "player"
 	}
 	return "admin"
+}
+
+// mayReceivePlayerToken decides whether this request is entitled to the player
+// token embedded in the player shell.
+//
+// Loopback covers the real player: run-player.sh points Chromium at
+// http://127.0.0.1:8080/player on the Jetson itself. An authenticated session
+// covers an operator opening the player remotely to check what is on the wall;
+// they already hold strictly more access than the token grants, so handing it over
+// gives away nothing new.
+func (s *Server) mayReceivePlayerToken(r *http.Request) bool {
+	if isLoopbackRequest(r) {
+		return true
+	}
+	_, _, err := s.deps.Sessions.Lookup(r.Context(), auth.SessionTokenFromRequest(r))
+	return err == nil
+}
+
+// isLoopbackRequest reports whether the peer address is on the loopback
+// interface. RemoteAddr is the kernel-reported peer and cannot be spoofed by a
+// header, so proxy headers are deliberately not consulted here.
+func isLoopbackRequest(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // jsonString renders a Go string as a JSON string literal.

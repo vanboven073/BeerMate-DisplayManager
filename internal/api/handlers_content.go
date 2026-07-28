@@ -3,18 +3,21 @@ package api
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
+	"unicode/utf8"
 
+	"github.com/vanboven073/BeerMate-DisplayManager/internal/auth"
 	"github.com/vanboven073/BeerMate-DisplayManager/internal/content"
 	"github.com/vanboven073/BeerMate-DisplayManager/internal/media"
 	"github.com/vanboven073/BeerMate-DisplayManager/internal/realtime"
 	"github.com/vanboven073/BeerMate-DisplayManager/internal/schedule"
 	"github.com/vanboven073/BeerMate-DisplayManager/internal/store"
+	"github.com/vanboven073/BeerMate-DisplayManager/internal/version"
 )
 
 // ---- reference data ------------------------------------------------------
@@ -152,10 +155,17 @@ func (s *Server) handleReorder(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if err := s.deps.Playlist.Reorder(r.Context(), req.SceneIDs); err != nil {
+	ctx := r.Context()
+	u, _ := userFrom(ctx)
+	if err := s.deps.Playlist.Reorder(ctx, req.SceneIDs, u.Username); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	_ = s.deps.Audit.Record(ctx, store.AuditEntry{
+		ActorName: u.Username, Action: "playlist_reordered",
+		Detail: strconv.Itoa(len(req.SceneIDs)) + " scene(s)",
+		IP:     clientIP(r, s.deps.Config.TrustProxyHeaders),
+	})
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -373,8 +383,23 @@ func (s *Server) handleMedia(w http.ResponseWriter, r *http.Request) {
 	var saved []media.Item
 	for {
 		part, err := mr.NextPart()
-		if err != nil {
+		if errors.Is(err, io.EOF) {
 			break
+		}
+		if err != nil {
+			// Anything other than EOF means the body was truncated, malformed, or
+			// hit the size cap partway through. Treating it as end-of-input would
+			// report 201 Created for a half-received batch and leave the operator
+			// believing files uploaded that did not.
+			status := http.StatusBadRequest
+			var maxErr *http.MaxBytesError
+			if errors.As(err, &maxErr) {
+				status = http.StatusRequestEntityTooLarge
+			}
+			s.deps.Log.Warn("multipart upload interrupted",
+				"error", err, "saved_before_failure", len(saved))
+			writeError(w, status, "the upload did not complete; no further files were stored")
+			return
 		}
 		if part.FormName() != "file" {
 			part.Close()
@@ -509,8 +534,11 @@ func (s *Server) handleMediaByID(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// roleAtLeastEditor is the in-handler check for endpoints whose read and write
+// halves share one route. The route table can only express the weaker of the two,
+// so the write half re-checks here.
 func roleAtLeastEditor(role string) bool {
-	return role == "editor" || role == "admin"
+	return auth.RoleAtLeast(role, auth.RoleEditor)
 }
 
 // handleMediaFile serves an original upload by database ID.
@@ -895,10 +923,9 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 		"subscribers":   map[string]any{"players": players, "admins": admins},
 		"server_time":   now.In(s.deps.Engine.Location()).Format(time.RFC3339),
 		"timezone":      s.deps.Config.Timezone,
-		"version":       s.deps.Config.Timezone, // placeholder replaced below
+		"version":       version.Get(),
 		"recent_events": recentErrors,
 	}
-	delete(resp, "version")
 	if hasEmergency {
 		resp["emergency"] = activeEmergency
 	}
@@ -1088,11 +1115,14 @@ func (s *Server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// truncateStr caps a string at n bytes without splitting a multi-byte rune, so a
+// truncated value is still valid UTF-8 when it lands in a TEXT column.
 func truncateStr(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
 	return s[:n]
 }
-
-var _ = strings.TrimSpace

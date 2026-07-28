@@ -4,6 +4,7 @@ package api
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -286,12 +287,21 @@ func (s *Server) requirePlayer(next http.HandlerFunc) http.HandlerFunc {
 		if presented == "" {
 			presented = r.URL.Query().Get("token")
 		}
-		if s.playerToken == "" || presented != s.playerToken {
+		if !s.playerTokenMatches(presented) {
 			writeError(w, http.StatusUnauthorized, "player token required")
 			return
 		}
 		next(w, r)
 	}
+}
+
+// playerTokenMatches compares a presented token against the startup token in
+// constant time, so the comparison cannot be turned into a byte-at-a-time oracle.
+func (s *Server) playerTokenMatches(presented string) bool {
+	if s.playerToken == "" || presented == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(presented), []byte(s.playerToken)) == 1
 }
 
 // methods restricts a handler to specific HTTP methods.
@@ -459,13 +469,10 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 	resp.Subscribers = s.deps.Hub.Count()
 
-	status := http.StatusOK
-	if resp.Status != "ok" {
-		// 200 with a degraded body: a monitoring probe should see the service is
-		// answering. Reserved 503 for a genuinely unusable service.
-		status = http.StatusOK
-	}
-	writeJSON(w, status, resp)
+	// Always 200, including when degraded: the body carries the detail, and a
+	// probe needs to distinguish "answering but unhappy" from "not answering".
+	// 503 is reserved for a genuinely unusable service.
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // cookieSecure decides the Secure cookie flag.

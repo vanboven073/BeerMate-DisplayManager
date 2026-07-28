@@ -181,16 +181,27 @@ func LoadOrCreateKey(path string) ([]byte, error) {
 	return newKey, nil
 }
 
-// CheckKeyPermissions verifies the key file is not group- or world-readable.
+// CheckKeyPermissions verifies the key file is not reachable by other users.
 // Reported as a health warning rather than a fatal error so a permission slip
 // does not take the display offline.
+//
+// World bits are what matter. Group read is expected on a real install: the
+// installer writes the key as root:beermate with mode 0640 so the service account
+// can read a file it does not own, which is a tighter arrangement than making the
+// service the owner. Group *write* is not — that would let the group replace the
+// key and silently orphan every stored credential.
 func CheckKeyPermissions(path string) error {
 	fi, err := os.Stat(path)
 	if err != nil {
 		return err
 	}
-	if mode := fi.Mode().Perm(); mode&0o077 != 0 {
-		return fmt.Errorf("secrets: %s has mode %04o; expected 0600", path, mode)
+	mode := fi.Mode().Perm()
+	if mode&0o007 != 0 {
+		return fmt.Errorf("secrets: %s has mode %04o; it must not be accessible to other users "+
+			"(expected 0600, or 0640 owned by the service group)", path, mode)
+	}
+	if mode&0o020 != 0 {
+		return fmt.Errorf("secrets: %s has mode %04o; it must not be group-writable", path, mode)
 	}
 	return nil
 }

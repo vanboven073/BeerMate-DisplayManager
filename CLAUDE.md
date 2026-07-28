@@ -204,8 +204,11 @@ reports machine `0xb7`. Confirm no secrets are staged (`git diff --cached`).
 ## Known limitations
 
 - SVG uploads are rejected (no sanitiser in v1).
-- PDF import needs `pdftoppm` on the device; the conversion worker is stubbed for
-  wiring but page rasterisation runs on-device (documented in troubleshooting).
+- PDF import needs `pdftoppm` on the device. Rasterisation is wired and runs
+  synchronously inside the upload request (bounded at 3 minutes); a PDF whose
+  pages cannot be rendered is still stored, with a warning naming the missing
+  tool. Moving it to a background worker is the obvious next step if operators
+  start uploading large decks.
 - Social platform adapters cover official feeds; Instagram/LinkedIn/etc. require
   the operator to supply an official API/JSON endpoint or use RSS/webhook.
 - The managed browser requires Xvfb and a Chromium binary on the device.

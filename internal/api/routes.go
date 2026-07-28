@@ -104,9 +104,10 @@ func (s *Server) routes() {
 
 // handleWebsiteRoute dispatches /api/v1/websites/{id}/... .
 //
-// The /frame sub-path is reachable by the player token as well as an admin
-// session, because the player renders it; every other verb is admin-only. Splitting
-// here keeps the player token off the management surface.
+// The /frame sub-path is reachable by the player token as well as a signed-in
+// session, because the player renders it. Everything else needs a session, and the
+// mutating verbs re-check for editor inside the handler. Splitting here keeps the
+// player token off the management surface.
 func (s *Server) handleWebsiteRoute(w http.ResponseWriter, r *http.Request) {
 	action := actionFromPath(r.URL.Path, "/api/v1/websites/")
 	if action == "frame" && r.Method == http.MethodGet {
@@ -123,11 +124,11 @@ func (s *Server) handleWebsiteRoute(w http.ResponseWriter, r *http.Request) {
 // leaving them public would expose uploaded content to anyone on the tailnet.
 func (s *Server) requireAnyViewer(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if tok := r.Header.Get("X-BeerMate-Player"); tok != "" && tok == s.playerToken {
+		if s.playerTokenMatches(r.Header.Get("X-BeerMate-Player")) {
 			next(w, r)
 			return
 		}
-		if tok := r.URL.Query().Get("token"); tok != "" && s.playerToken != "" && tok == s.playerToken {
+		if s.playerTokenMatches(r.URL.Query().Get("token")) {
 			next(w, r)
 			return
 		}

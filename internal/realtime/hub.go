@@ -143,25 +143,30 @@ func (h *Hub) unsubscribe(c *client) {
 //
 // It never blocks: a client whose buffer is full is dropped. Blocking here would
 // let one stalled browser tab stall every publish in the system.
+//
+// The sends happen while the read lock is still held. Selecting targets under the
+// lock and then sending after releasing it would be a use-after-close: a client
+// that disconnects in that window has its channel closed by unsubscribe, and the
+// send panics. Every closer (unsubscribe, Close) takes the write lock, so holding
+// the read lock across the sends is what makes the channel safe to touch. It costs
+// nothing in latency because the sends are non-blocking.
 func (h *Hub) Broadcast(m Message) {
+	var stalled []*client
+
 	h.mu.RLock()
-	targets := make([]*client, 0, len(h.clients))
 	for _, c := range h.clients {
 		if !m.matches(c.role) {
 			continue
 		}
-		targets = append(targets, c)
-	}
-	h.mu.RUnlock()
-
-	var stalled []*client
-	for _, c := range targets {
 		select {
 		case c.ch <- m:
 		default:
 			stalled = append(stalled, c)
 		}
 	}
+	h.mu.RUnlock()
+
+	// Dropped outside the read lock: unsubscribe needs the write lock.
 	for _, c := range stalled {
 		h.log.Warn("dropping slow realtime subscriber", "client", c.id, "role", c.role)
 		h.unsubscribe(c)

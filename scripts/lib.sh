@@ -74,10 +74,11 @@ bm_ensure_dirs() {
   install -d -o root -g root -m 0755 "${BM_APP_DIR}/scripts"
 }
 
-# bm_generate_secret writes a fresh 32-byte base64 key with mode 0600 if none
-# exists. The key encrypts stored API tokens and must never be regenerated on an
-# existing install, or every stored credential becomes undecryptable — hence the
-# existence check.
+# bm_generate_secret writes a fresh 32-byte base64 key as root:beermate with mode
+# 0640 if none exists: owned by root so the service cannot rewrite its own key,
+# group-readable so the service account can load it. The key encrypts stored API
+# tokens and must never be regenerated on an existing install, or every stored
+# credential becomes undecryptable — hence the existence check.
 bm_generate_secret() {
   if [ -f "${BM_SECRET_FILE}" ]; then
     bm_ok "encryption key already present; leaving it untouched"

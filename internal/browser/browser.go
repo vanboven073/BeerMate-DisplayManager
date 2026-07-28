@@ -196,6 +196,11 @@ type Config struct {
 	RealDisplay string
 	Width       int
 	Height      int
+	// MaxCaptures bounds concurrent screenshot operations. A split-screen scene
+	// with several managed websites asks the player to fetch each zone at once,
+	// and an unbounded fan-out of navigate+screenshot cycles saturates the
+	// Jetson's four A57 cores. Values below 1 are treated as 1.
+	MaxCaptures int
 	Logger      Logger
 }
 

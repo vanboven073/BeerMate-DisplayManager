@@ -168,7 +168,7 @@ func TestReorderScenes(t *testing.T) {
 	}
 
 	reversed := []int64{ids[2], ids[1], ids[0]}
-	if err := ps.Reorder(ctx, reversed); err != nil {
+	if err := ps.Reorder(ctx, reversed, "bram"); err != nil {
 		t.Fatalf("reorder: %v", err)
 	}
 
@@ -196,7 +196,7 @@ func TestReorderRequiresCompleteList(t *testing.T) {
 		}
 		ids = append(ids, sc.ID)
 	}
-	if err := ps.Reorder(ctx, ids[:1]); err == nil {
+	if err := ps.Reorder(ctx, ids[:1], "bram"); err == nil {
 		t.Error("partial reorder was accepted")
 	}
 }
@@ -232,6 +232,88 @@ func TestDuplicateScene(t *testing.T) {
 }
 
 // ---- publishing ----------------------------------------------------------
+
+// The dashboard decides whether there is anything to publish by comparing the
+// draft's scene timestamps against the live revision's. Cloning must therefore
+// carry updated_at across rather than stamping it with the clone time, or every
+// publish would immediately report unpublished changes.
+func TestPublishLeavesDraftTimestampsMatchingLive(t *testing.T) {
+	ps, db := newStore(t)
+	ctx := context.Background()
+	seedMedia(t, db, 1)
+
+	sc := imageScene("Roadmap", "1")
+	if err := ps.SaveScene(ctx, sc, "bram"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Publish at a later wall-clock time than the edit, which is the normal case
+	// and the one that exposed the bug.
+	edited := time.Now()
+	ps.SetClock(func() time.Time { return edited.Add(time.Hour) })
+
+	res, err := ps.Publish(ctx, "bram", "first publish")
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	live, err := ps.ListScenes(ctx, res.PublishedRevision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	draft, err := ps.ListScenes(ctx, res.NewDraftRevision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(live) != len(draft) {
+		t.Fatalf("live has %d scenes, fresh draft has %d", len(live), len(draft))
+	}
+	for i := range draft {
+		if draft[i].UpdatedAt.After(live[i].UpdatedAt) {
+			t.Errorf("scene %d: fresh draft updated_at %s is newer than live %s; "+
+				"the dashboard would report unpublished changes straight after a publish",
+				i, draft[i].UpdatedAt, live[i].UpdatedAt)
+		}
+	}
+}
+
+// A reorder is an unpublished change and has to be visible as one.
+func TestReorderMarksMovedScenesUpdated(t *testing.T) {
+	ps, db := newStore(t)
+	ctx := context.Background()
+	seedMedia(t, db, 1)
+
+	var ids []int64
+	for _, n := range []string{"one", "two"} {
+		sc := imageScene(n, "1")
+		if err := ps.SaveScene(ctx, sc, "bram"); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, sc.ID)
+	}
+
+	draft, _ := ps.DraftRevision(ctx)
+	before, _ := ps.ListScenes(ctx, draft.ID)
+
+	ps.SetClock(func() time.Time { return time.Now().Add(time.Hour) })
+	if err := ps.Reorder(ctx, []int64{ids[1], ids[0]}, "bram"); err != nil {
+		t.Fatalf("reorder: %v", err)
+	}
+
+	after, _ := ps.ListScenes(ctx, draft.ID)
+	var moved int
+	for _, a := range after {
+		for _, b := range before {
+			if a.ID == b.ID && a.UpdatedAt.After(b.UpdatedAt) {
+				moved++
+			}
+		}
+	}
+	if moved == 0 {
+		t.Error("no scene had updated_at bumped by the reorder; the change would be " +
+			"invisible to the unpublished-changes check")
+	}
+}
 
 func TestPublishMakesDraftLiveAndOpensNewDraft(t *testing.T) {
 	ps, db := newStore(t)

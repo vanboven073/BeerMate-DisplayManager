@@ -477,11 +477,16 @@ func nextCopyName(name string) string {
 //
 // Positions are rewritten from the supplied list in one transaction, so a partial
 // reorder can never be observed.
-func (s *PlaylistStore) Reorder(ctx context.Context, sceneIDs []int64) error {
+//
+// Rows that actually move have updated_at stamped: reordering is an unpublished
+// change like any other, and leaving the timestamps alone would hide it from the
+// dashboard's "you have unpublished changes" check.
+func (s *PlaylistStore) Reorder(ctx context.Context, sceneIDs []int64, actor string) error {
 	draft, err := s.DraftRevision(ctx)
 	if err != nil {
 		return err
 	}
+	now := rfc3339(s.now())
 	return s.db.Tx(ctx, func(tx *sql.Tx) error {
 		var have int
 		if err := tx.QueryRowContext(ctx,
@@ -492,9 +497,13 @@ func (s *PlaylistStore) Reorder(ctx context.Context, sceneIDs []int64) error {
 			return fmt.Errorf("reorder must list all %d scenes, got %d", have, len(sceneIDs))
 		}
 		for i, id := range sceneIDs {
-			res, err := tx.ExecContext(ctx,
-				`UPDATE scenes SET position = ? WHERE id = ? AND revision_id = ?`,
-				i+1, id, draft.ID)
+			res, err := tx.ExecContext(ctx, `
+				UPDATE scenes
+				   SET position = ?,
+				       updated_at = CASE WHEN position = ? THEN updated_at ELSE ? END,
+				       updated_by = CASE WHEN position = ? THEN updated_by ELSE ? END
+				 WHERE id = ? AND revision_id = ?`,
+				i+1, i+1, now, i+1, actor, id, draft.ID)
 			if err != nil {
 				return err
 			}
@@ -659,7 +668,7 @@ func cloneRevision(ctx context.Context, tx *sql.Tx, srcID int64, actor string, n
 	rows, err := tx.QueryContext(ctx, `
 		SELECT id, stable_id, name, position, enabled, layout, layout_json, duration_ms,
 		       background, transition, active_from, active_until, days_mask, valid,
-		       validation_msg, created_at, created_by
+		       validation_msg, created_at, created_by, updated_at, updated_by
 		  FROM scenes WHERE revision_id = ? ORDER BY position, id`, srcID)
 	if err != nil {
 		return 0, err
@@ -670,6 +679,7 @@ func cloneRevision(ctx context.Context, tx *sql.Tx, srcID int64, actor string, n
 		stableID, name, layout, layoutJSON          string
 		background, transition, validationMsg       string
 		createdAt, createdBy                        string
+		updatedAt, updatedBy                        string
 		position, durationMS, daysMask, enabled, ok int
 		activeFrom, activeUntil                     sql.NullString
 	}
@@ -679,7 +689,7 @@ func cloneRevision(ctx context.Context, tx *sql.Tx, srcID int64, actor string, n
 		if err := rows.Scan(&sr.oldID, &sr.stableID, &sr.name, &sr.position, &sr.enabled,
 			&sr.layout, &sr.layoutJSON, &sr.durationMS, &sr.background, &sr.transition,
 			&sr.activeFrom, &sr.activeUntil, &sr.daysMask, &sr.ok, &sr.validationMsg,
-			&sr.createdAt, &sr.createdBy); err != nil {
+			&sr.createdAt, &sr.createdBy, &sr.updatedAt, &sr.updatedBy); err != nil {
 			rows.Close()
 			return 0, err
 		}
@@ -692,6 +702,11 @@ func cloneRevision(ctx context.Context, tx *sql.Tx, srcID int64, actor string, n
 	rows.Close()
 
 	for _, sr := range srcScenes {
+		// updated_at is copied from the source rather than stamped with the clone
+		// time. A clone is not an edit: stamping it would make every scene in the
+		// fresh draft look newer than its published counterpart, and the dashboard's
+		// "unpublished changes" check — which compares those timestamps — would read
+		// true the instant a publish finished.
 		res, err := tx.ExecContext(ctx, `
 			INSERT INTO scenes (revision_id, stable_id, name, position, enabled, layout,
 				layout_json, duration_ms, background, transition, active_from, active_until,
@@ -699,7 +714,8 @@ func cloneRevision(ctx context.Context, tx *sql.Tx, srcID int64, actor string, n
 			VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			newID, sr.stableID, sr.name, sr.position, sr.enabled, sr.layout, sr.layoutJSON,
 			sr.durationMS, sr.background, sr.transition, sr.activeFrom, sr.activeUntil,
-			sr.daysMask, sr.ok, sr.validationMsg, sr.createdAt, sr.createdBy, ts, actor)
+			sr.daysMask, sr.ok, sr.validationMsg, sr.createdAt, sr.createdBy,
+			sr.updatedAt, sr.updatedBy)
 		if err != nil {
 			return 0, err
 		}
@@ -866,9 +882,12 @@ func (s *PlaylistStore) ReferencedMediaIDs(ctx context.Context) (map[int64]bool,
 	}
 
 	// Media referenced from inside config JSON (poster images, completion images,
-	// announcement images) is found by scanning the config blobs.
+	// announcement images) is found by scanning the config blobs. Every blob is
+	// scanned rather than pre-filtered in SQL: `LIKE '%_id%'` reads as a literal
+	// but `_` is a single-character wildcard in SQLite, so the filter never meant
+	// what it looked like, and getting this set wrong silently deletes live media.
 	crows, err := s.db.QueryContext(ctx, `
-		SELECT config_json FROM zones WHERE config_json LIKE '%_id%'`)
+		SELECT config_json FROM zones WHERE config_json != '{}'`)
 	if err != nil {
 		return nil, err
 	}
@@ -904,14 +923,30 @@ func (s *PlaylistStore) IsWebsiteReferenced(ctx context.Context, id int64) (bool
 }
 
 // IsFeedReferenced reports whether any scene uses the social feed.
+//
+// The candidate rows are narrowed in SQL and then matched exactly in Go. A bare
+// LIKE on `"feed_id":5` also matches 50, 51 and 500, which would refuse a
+// perfectly legitimate delete because an unrelated feed shares a digit prefix.
 func (s *PlaylistStore) IsFeedReferenced(ctx context.Context, id int64) (bool, error) {
-	var n int
-	needle := fmt.Sprintf(`"feed_id":%d`, id)
-	err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM zones
-		  WHERE content_type IN ('social','ticker')
-		    AND REPLACE(config_json, ' ', '') LIKE ?`, "%"+needle+"%").Scan(&n)
-	return n > 0, err
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT config_json FROM zones WHERE content_type IN ('social','ticker')`)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cfg string
+		if err := rows.Scan(&cfg); err != nil {
+			return false, err
+		}
+		for _, found := range extractJSONIntField(cfg, "feed_id") {
+			if found == id {
+				return true, nil
+			}
+		}
+	}
+	return false, rows.Err()
 }
 
 // MarkPlayed records a successful or failed playback for a scene.
@@ -965,34 +1000,53 @@ func parseID(s string) (int64, error) {
 	return id, nil
 }
 
-// extractMediaIDs pulls "*_id": N values out of a zone config blob.
+// extractMediaIDs pulls the media-referencing "*_id": N values out of a zone
+// config blob.
 func extractMediaIDs(cfg string) []int64 {
 	var out []int64
+	for _, key := range []string{"poster_id", "image_id", "completion_image_id"} {
+		out = append(out, extractJSONIntField(cfg, key)...)
+	}
+	return out
+}
+
+// extractJSONIntField returns every integer value stored under key in a zone
+// config blob.
+//
+// Zone config is schemaless by design — a new slide type must not need a schema
+// change — so the reference scan reads it textually rather than unmarshalling into
+// a type per slide kind. Matching on the quoted key and consuming only the digits
+// that follow keeps it exact: "feed_id":5 does not match "feed_id":50, and a key
+// that merely ends in the same letters is not a match either.
+func extractJSONIntField(cfg, key string) []int64 {
+	needle := `"` + key + `":`
 	compact := strings.ReplaceAll(cfg, " ", "")
-	for _, key := range []string{
-		`"poster_id":`, `"image_id":`, `"completion_image_id":`,
-	} {
-		idx := 0
-		for {
-			i := strings.Index(compact[idx:], key)
-			if i < 0 {
-				break
-			}
-			start := idx + i + len(key)
-			end := start
-			for end < len(compact) && compact[end] >= '0' && compact[end] <= '9' {
-				end++
-			}
-			if end > start {
+
+	var out []int64
+	for idx := 0; idx < len(compact); {
+		i := strings.Index(compact[idx:], needle)
+		if i < 0 {
+			break
+		}
+		start := idx + i + len(needle)
+		end := start
+		for end < len(compact) && compact[end] >= '0' && compact[end] <= '9' {
+			end++
+		}
+		if end > start {
+			// Reject a value that continues into something that is not a JSON
+			// delimiter, e.g. a float such as "feed_id":5.5.
+			if end == len(compact) || isJSONDelimiter(compact[end]) {
 				if id, err := parseID(compact[start:end]); err == nil {
 					out = append(out, id)
 				}
 			}
-			idx = end
-			if idx >= len(compact) {
-				break
-			}
 		}
+		idx = start + 1
 	}
 	return out
+}
+
+func isJSONDelimiter(c byte) bool {
+	return c == ',' || c == '}' || c == ']'
 }

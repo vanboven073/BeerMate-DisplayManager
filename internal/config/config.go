@@ -2,8 +2,9 @@
 //
 // Precedence (later wins): built-in defaults -> config file -> environment.
 // The production config file lives at /etc/beermate-display-manager/config.json.
-// Secrets never live in the config file; the encryption key is a separate
-// 0600 file so the config can be readable for troubleshooting.
+// Secrets never live in the config file; the encryption key is a separate file,
+// installed as root:beermate mode 0640, so the config can stay readable for
+// troubleshooting while the key is not.
 package config
 
 import (

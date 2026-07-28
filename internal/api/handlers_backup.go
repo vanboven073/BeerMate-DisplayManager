@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/vanboven073/BeerMate-DisplayManager/internal/auth"
 	"github.com/vanboven073/BeerMate-DisplayManager/internal/store"
 )
 
@@ -110,6 +111,15 @@ func (s *Server) handleBackupByID(w http.ResponseWriter, r *http.Request) {
 
 	switch {
 	case r.Method == http.MethodGet && action == "download":
+		// A backup archive is the whole database: password hashes, session rows,
+		// encrypted credentials and the audit trail. Reading it is a far stronger
+		// capability than the read-only dashboard a viewer is granted, so it is
+		// held to the same bar as restoring one.
+		if u.Role != auth.RoleAdmin {
+			writeError(w, http.StatusForbidden,
+				"only an administrator may download a backup archive")
+			return
+		}
 		b, err := s.deps.Backups.Get(ctx, id)
 		if err != nil {
 			writeError(w, http.StatusNotFound, "backup not found")
@@ -141,7 +151,7 @@ func (s *Server) handleBackupByID(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "manifest": manifest})
 
 	case r.Method == http.MethodPost && action == "restore":
-		if u.Role != "admin" {
+		if u.Role != auth.RoleAdmin {
 			writeError(w, http.StatusForbidden, "only an administrator may restore a backup")
 			return
 		}

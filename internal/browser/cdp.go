@@ -33,16 +33,40 @@ type cdpManager struct {
 	// lastShot caches the previous frame per profile so a capture failure can
 	// return the last good image instead of a blank zone.
 	lastShot map[string][]byte
+
+	// captureSem bounds concurrent capture cycles. Each one drives a navigate and
+	// a full-viewport JPEG encode; letting every zone of a split-screen scene run
+	// its own is how the Jetson's cores get saturated.
+	captureSem chan struct{}
 }
 
 func newCDPManager(cfg Config) *cdpManager {
+	maxCaptures := cfg.MaxCaptures
+	if maxCaptures < 1 {
+		maxCaptures = 1
+	}
 	return &cdpManager{
-		cfg:      cfg,
-		log:      cfg.Logger,
-		state:    StateStopped,
-		lastShot: map[string][]byte{},
+		cfg:        cfg,
+		log:        cfg.Logger,
+		state:      StateStopped,
+		lastShot:   map[string][]byte{},
+		captureSem: make(chan struct{}, maxCaptures),
 	}
 }
+
+// acquireCapture waits for a capture slot, giving up if the caller's deadline
+// passes first. The player's request already carries a timeout, so a queue that
+// cannot drain surfaces as a fallback frame rather than an unbounded wait.
+func (m *cdpManager) acquireCapture(ctx context.Context) error {
+	select {
+	case m.captureSem <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (m *cdpManager) releaseCapture() { <-m.captureSem }
 
 func (m *cdpManager) Name() string { return "cdp" }
 
@@ -145,6 +169,11 @@ func (c *chromeInstance) stop() error {
 
 // Capture returns a JPEG screenshot of targetURL rendered in the profile.
 func (m *cdpManager) Capture(ctx context.Context, profileID, targetURL string) ([]byte, error) {
+	if err := m.acquireCapture(ctx); err != nil {
+		return m.cachedOrErr(profileID, err)
+	}
+	defer m.releaseCapture()
+
 	m.mu.Lock()
 	// The interactive instance owns the profile during login; refuse to also run
 	// a capture against the same profile directory.
