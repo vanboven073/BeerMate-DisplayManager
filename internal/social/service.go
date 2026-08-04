@@ -294,24 +294,81 @@ func (s *Service) Refresh(ctx context.Context, f Feed) error {
 	return nil
 }
 
+// upsertPost stores a post, or refreshes the one already held. It reports
+// whether the post was new, which is what drives the "refreshed" notification.
 func (s *Service) upsertPost(ctx context.Context, feedID int64, p Post, state string) bool {
+	// Adapters that supply a media URL without classifying it — the generic JSON
+	// and webhook shapes — still need a kind, because the player only renders an
+	// image when media_kind says image.
+	if p.MediaURL != "" && p.MediaKind == "" {
+		p.MediaKind = inferMediaKind(p.MediaURL, "", "")
+	}
+
 	var posted any
 	if p.PostedAt != nil {
 		posted = rfc3339(*p.PostedAt)
 	}
-	res, err := s.db.ExecContext(ctx, `
+	now := rfc3339(s.now())
+
+	var existing int64
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id FROM social_posts WHERE feed_id = ? AND external_id = ?`,
+		feedID, p.ExternalID).Scan(&existing)
+
+	switch {
+	case err == nil:
+		// Refresh the mutable content of a post already held. Social CDNs sign
+		// their media URLs with an expiry, so a URL captured days ago starts
+		// returning 404 and the zone falls back to text. Re-reading it on every
+		// poll keeps images alive for as long as the post stays in the feed
+		// window.
+		//
+		// Moderation columns are deliberately absent from this UPDATE: an
+		// approved, rejected or pinned decision must survive a refetch. Each
+		// field also only overwrites when the incoming value is non-empty, so a
+		// feed that intermittently omits one cannot blank out good data.
+		if _, uerr := s.db.ExecContext(ctx, `
+			UPDATE social_posts SET
+				author        = CASE WHEN ? <> '' THEN ? ELSE author        END,
+				author_handle = CASE WHEN ? <> '' THEN ? ELSE author_handle END,
+				avatar_url    = CASE WHEN ? <> '' THEN ? ELSE avatar_url    END,
+				text          = CASE WHEN ? <> '' THEN ? ELSE text          END,
+				media_url     = CASE WHEN ? <> '' THEN ? ELSE media_url     END,
+				media_kind    = CASE WHEN ? <> '' THEN ? ELSE media_kind    END,
+				permalink     = CASE WHEN ? <> '' THEN ? ELSE permalink     END,
+				posted_at     = CASE WHEN ? IS NOT NULL THEN ? ELSE posted_at END,
+				fetched_at    = ?
+			WHERE id = ?`,
+			p.Author, p.Author,
+			p.AuthorHandle, p.AuthorHandle,
+			p.AvatarURL, p.AvatarURL,
+			p.Text, p.Text,
+			p.MediaURL, p.MediaURL,
+			p.MediaKind, p.MediaKind,
+			p.Permalink, p.Permalink,
+			posted, posted,
+			now, existing,
+		); uerr != nil {
+			s.log.Warn("could not refresh social post", "feed", feedID, "error", uerr)
+		}
+		return false
+
+	case !errors.Is(err, sql.ErrNoRows):
+		s.log.Warn("could not look up social post", "feed", feedID, "error", err)
+		return false
+	}
+
+	if _, err := s.db.ExecContext(ctx, `
 		INSERT INTO social_posts (feed_id, external_id, author, author_handle, avatar_url,
 			text, media_url, media_kind, permalink, posted_at, fetched_at, moderation_state)
 		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(feed_id, external_id) DO NOTHING`,
 		feedID, p.ExternalID, p.Author, p.AuthorHandle, p.AvatarURL, p.Text,
-		p.MediaURL, p.MediaKind, p.Permalink, posted, rfc3339(s.now()), state)
-	if err != nil {
+		p.MediaURL, p.MediaKind, p.Permalink, posted, now, state); err != nil {
 		s.log.Warn("could not store social post", "feed", feedID, "error", err)
 		return false
 	}
-	n, _ := res.RowsAffected()
-	return n > 0
+	return true
 }
 
 // trimCache enforces the per-feed cache cap, deleting the oldest non-pinned posts.

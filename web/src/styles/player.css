@@ -834,13 +834,43 @@
   overflow: hidden;
 }
 
-/* Cards, grid and wall tile the posts; the rest stack in a single column. */
+/* Cards, grid and wall tile the posts; the rest stack in a single column.
+ *
+ * grid-auto-rows: 1fr gives every row a definite height, which is what lets a
+ * post bound its image below. Without it the rows size to content, the image
+ * renders at its intrinsic aspect ratio, and the caption is pushed out of the
+ * card and clipped — posts with no image were the only ones still showing text. */
 .bm-social--cards,
 .bm-social--grid,
 .bm-social--wall {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(28%, 1fr));
-  align-content: start;
+  grid-auto-rows: 1fr;
+  align-content: stretch;
+}
+/* In a tiled card the image takes the space left over, and the caption keeps
+   its own. object-fit: cover on a now-definite height crops rather than
+   stretches, so portrait and landscape posts both sit correctly. */
+.bm-social--cards .bm-social__media,
+.bm-social--grid .bm-social__media,
+.bm-social--wall .bm-social__media {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.bm-social--cards .bm-social__body,
+.bm-social--grid .bm-social__body,
+.bm-social--wall .bm-social__body {
+  flex: 0 0 auto;
+}
+/* Long Instagram captions would otherwise reclaim the whole card. Clamping is
+   supported from Chromium 97, the oldest build this player targets. */
+.bm-social--cards .bm-social__text,
+.bm-social--grid .bm-social__text,
+.bm-social--wall .bm-social__text {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .bm-social--vertical,
 .bm-social--sidebar,
