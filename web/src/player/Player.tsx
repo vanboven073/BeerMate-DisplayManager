@@ -90,6 +90,15 @@ export function Player() {
   indexRef.current = index;
   onlineRef.current = online;
 
+  // Depend on the stable sync callback, never on the clock object. useServerClock
+  // returns a fresh object every render (and its `tick` changes every second), so
+  // depending on the object made applyState — and through it fetchState — change
+  // identity constantly. Both the reconcile effect and the SSE effect list
+  // fetchState as a dependency, so they were torn down and re-run continuously:
+  // a self-feeding refetch loop that reopened the event stream each time and, on
+  // the Jetson, drove ~1.5 state fetches per second.
+  const syncClock = clock.sync;
+
   const applyState = useCallback((next: PlayerState) => {
     setState((prev) => {
       // Reset the rotation only when the published revision actually changed.
@@ -102,8 +111,8 @@ export function Player() {
       return next;
     });
     saveCache(next);
-    clock.sync(next.server_time);
-  }, [clock]);
+    syncClock(next.server_time);
+  }, [syncClock]);
 
   const fetchState = useCallback(
     async (signal?: AbortSignal) => {
@@ -212,19 +221,30 @@ export function Player() {
   const scenes = playableScenes(state, online);
   const current = scenes.length > 0 ? scenes[index % scenes.length] : undefined;
 
+  // The dwell timer depends on the current scene's *identity and duration*, not
+  // on the scene object. Every state fetch re-parses JSON, so depending on the
+  // object meant each fetch cleared the pending timeout and started a new one.
+  // A burst of SSE-driven refetches then froze the display on one scene
+  // indefinitely — observed on the Jetson at ~1.5 fetches/second against a
+  // 10-second dwell. Comparing by value keeps the timer alive across refetches
+  // that did not actually change which scene is showing.
+  const currentKey = current?.stable_id ?? '';
+  const currentDuration = current?.duration_ms ?? 0;
+  const sceneCount = scenes.length;
+
   useEffect(() => {
-    if (!current || scenes.length === 0) return;
+    if (!currentKey || sceneCount === 0) return;
     if (!state?.display_on) return;
 
-    const duration = Math.max(current.duration_ms, 3000);
+    const duration = Math.max(currentDuration, 3000);
     const timer = window.setTimeout(() => {
-      setIndex((i) => (i + 1) % Math.max(scenes.length, 1));
+      setIndex((i) => (i + 1) % Math.max(sceneCount, 1));
     }, duration);
 
     // Clearing on every dependency change is what stops timers accumulating
     // across the thousands of transitions this page performs between restarts.
     return () => window.clearTimeout(timer);
-  }, [current, scenes.length, state?.display_on]);
+  }, [currentKey, currentDuration, sceneCount, state?.display_on]);
 
   // Keep the index inside bounds when the playlist shrinks.
   useEffect(() => {

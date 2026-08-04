@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 /**
  * A clock synchronised to the server.
@@ -44,7 +44,11 @@ export function useServerClock(): ServerClock {
     return () => window.clearInterval(id);
   }, []);
 
-  return { now, sync, offsetMs, tick };
+  // Memoised so the object only changes when a reading actually changes. A fresh
+  // object every render leaks into consumers' useCallback/useEffect dependencies;
+  // that is how the player ended up refetching state on every render. `now` and
+  // `sync` are stable, so depend on those directly when you do not need `tick`.
+  return useMemo(() => ({ now, sync, offsetMs, tick }), [now, sync, offsetMs, tick]);
 }
 
 /** Formats a duration as countdown parts. */
