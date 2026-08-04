@@ -93,6 +93,23 @@ export function setPlayerToken(token: string): void {
   playerToken = token;
 }
 
+/**
+ * Builds a URL for a media blob served by /media/file/ or /media/thumb/.
+ *
+ * These URLs end up in <img src> and <video src>, which cannot carry the
+ * X-BeerMate-Player header that request() uses, and the player document holds no
+ * session cookie. The server therefore also accepts the token as a query
+ * parameter; this is the only place that should construct such a URL, so the
+ * token is never forgotten again.
+ *
+ * In the admin app playerToken is empty and the operator's session cookie
+ * authorises the request, so the bare path is correct there.
+ */
+export function mediaUrl(id: string | number, thumb = false): string {
+  const base = `/media/${thumb ? 'thumb' : 'file'}/${id}`;
+  return playerToken ? `${base}?token=${encodeURIComponent(playerToken)}` : base;
+}
+
 /** Performs an API request and decodes the JSON response. */
 export async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   const method = opts.method || 'GET';

@@ -16,7 +16,7 @@ import type {
   ZoneStyle,
 } from '../lib/types';
 import { parseConfig } from '../lib/types';
-import { api } from '../lib/api';
+import { api, mediaUrl } from '../lib/api';
 import { ZoneFallback } from './Chrome';
 import { countdownParts, formatInZone, type ServerClock } from './useServerClock';
 
@@ -108,7 +108,7 @@ function ImageZone({ zone }: { zone: Zone }) {
     <div class="bm-img" style={cfg.background ? { background: cfg.background } : undefined}>
       <img
         class="bm-img__el"
-        src={`/media/file/${zone.content_ref}`}
+        src={mediaUrl(zone.content_ref)}
         alt={cfg.title || ''}
         style={{ objectFit: fit }}
         onError={() => setFailed(true)}
@@ -170,8 +170,8 @@ function VideoZone({ zone }: { zone: Zone }) {
     <video
       ref={ref}
       class="bm-video"
-      src={`/media/file/${zone.content_ref}`}
-      poster={cfg.poster_id ? `/media/file/${cfg.poster_id}` : undefined}
+      src={mediaUrl(zone.content_ref)}
+      poster={cfg.poster_id ? mediaUrl(cfg.poster_id) : undefined}
       style={{ objectFit: fit }}
       autoPlay
       muted
@@ -463,7 +463,7 @@ function AnnouncementZone({ zone }: { zone: Zone }) {
       {cfg.show_logo && (
         <img class="bm-announce__logo" src="/brand/logo/beermate-wordmark-mono-ivory.svg" alt="BeerMate" width="220" />
       )}
-      {cfg.image_id ? <img class="bm-announce__img" src={`/media/file/${cfg.image_id}`} alt="" /> : null}
+      {cfg.image_id ? <img class="bm-announce__img" src={mediaUrl(cfg.image_id)} alt="" /> : null}
       <h2 class="bm-announce__heading">{cfg.heading}</h2>
       {cfg.body && <p class="bm-announce__body">{cfg.body}</p>}
       {cfg.cta && <div class="bm-announce__cta">{cfg.cta}</div>}
@@ -482,7 +482,7 @@ function ImageTextZone({ zone }: { zone: Zone }) {
     <div class={`bm-imagetext bm-imagetext--${template}`}>
       {cfg.image_id && (
         <div class="bm-imagetext__media">
-          <img src={`/media/file/${cfg.image_id}`} alt="" />
+          <img src={mediaUrl(cfg.image_id)} alt="" />
         </div>
       )}
       <div class="bm-imagetext__body">
@@ -562,7 +562,7 @@ function EventZone({ zone, clock, timezone }: { zone: Zone; clock: ServerClock; 
 
   return (
     <div class="bm-event">
-      {cfg.image_id && <img class="bm-event__bg" src={`/media/file/${cfg.image_id}`} alt="" />}
+      {cfg.image_id && <img class="bm-event__bg" src={mediaUrl(cfg.image_id)} alt="" />}
       <div class="bm-event__inner">
         {cfg.show_logo && (
           <img class="bm-event__logo" src="/brand/logo/beermate-wordmark-mono-ivory.svg" alt="BeerMate" width="200" />
