@@ -769,17 +769,42 @@
 
 /* ---- social feed ------------------------------------------------------- */
 
+/* The zone is the measuring host; one page of posts lays itself out inside it.
+ * planLayout() in socialLayout.ts decides the page size and column count from
+ * this element's measured box, so the layout follows the zone and the configured
+ * post count instead of being pinned to three columns. */
 .bm-social {
   width: 100%;
   height: 100%;
-  display: flex;
-  gap: 1.5vmin;
   padding: 1.5vmin;
   overflow: hidden;
   box-sizing: border-box;
 }
 .bm-social--loading {
   opacity: 0;
+}
+
+/* Remounted whenever the page index changes, which replays the fade. */
+.bm-social__page {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  gap: 1.5vmin;
+  box-sizing: border-box;
+  animation: bm-social-page-in 500ms ease both;
+}
+@keyframes bm-social-page-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bm-social__page {
+    animation: none;
+  }
 }
 
 .bm-social__post {
@@ -791,6 +816,7 @@
   padding: 1.6vmin;
   overflow: hidden;
   min-width: 0;
+  min-height: 0;
 }
 .bm-social__media {
   flex: 0 0 auto;
@@ -834,22 +860,21 @@
   overflow: hidden;
 }
 
-/* Cards, grid and wall tile the posts; the rest stack in a single column.
- *
- * grid-auto-rows: 1fr gives every row a definite height, which is what lets a
- * post bound its image below. Without it the rows size to content, the image
- * renders at its intrinsic aspect ratio, and the caption is pushed out of the
- * card and clipped — posts with no image were the only ones still showing text. */
-.bm-social--cards,
-.bm-social--grid,
-.bm-social--wall {
+/* Cards, grid and wall tile the posts. The column count arrives as an inline
+ * grid-template-columns from planLayout; grid-auto-rows: 1fr gives every row a
+ * definite height, which is what lets a post bound its image below. Without it
+ * the image renders at its intrinsic aspect ratio, takes the whole card and
+ * pushes the caption out where overflow:hidden clips it — posts with no image
+ * were the only ones still showing their text. */
+.bm-social--cards .bm-social__page,
+.bm-social--grid .bm-social__page,
+.bm-social--wall .bm-social__page {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(28%, 1fr));
   grid-auto-rows: 1fr;
   align-content: stretch;
 }
-/* In a tiled card the image takes the space left over, and the caption keeps
-   its own. object-fit: cover on a now-definite height crops rather than
+/* In a tiled card the image takes the space left over and the caption keeps its
+   own. object-fit: cover against a now-definite height crops rather than
    stretches, so portrait and landscape posts both sit correctly. */
 .bm-social--cards .bm-social__media,
 .bm-social--grid .bm-social__media,
@@ -872,13 +897,21 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.bm-social--vertical,
-.bm-social--sidebar,
-.bm-social--latest {
+
+.bm-social--vertical .bm-social__page,
+.bm-social--sidebar .bm-social__page,
+.bm-social--latest .bm-social__page {
   flex-direction: column;
 }
-.bm-social--single,
-.bm-social--fullscreen {
+.bm-social--vertical .bm-social__post,
+.bm-social--sidebar .bm-social__post,
+.bm-social--latest .bm-social__post {
+  flex: 1 1 0;
+}
+
+/* One post filling the zone, rotating a page at a time. */
+.bm-social--single .bm-social__page,
+.bm-social--fullscreen .bm-social__page {
   flex-direction: column;
 }
 .bm-social--single .bm-social__text,
@@ -889,7 +922,13 @@
 .bm-social--fullscreen .bm-social__post {
   flex: 1 1 auto;
 }
-.bm-social--ticker {
+.bm-social--single .bm-social__media,
+.bm-social--fullscreen .bm-social__media {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.bm-social--ticker .bm-social__page {
   flex-direction: row;
   align-items: center;
 }

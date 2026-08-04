@@ -17,6 +17,7 @@ import type {
 } from '../lib/types';
 import { parseConfig } from '../lib/types';
 import { api, mediaUrl } from '../lib/api';
+import { planLayout, pageCount } from './socialLayout';
 import { ZoneFallback } from './Chrome';
 import { countdownParts, formatInZone, type ServerClock } from './useServerClock';
 
@@ -399,8 +400,69 @@ function SocialZone({ zone }: { zone: Zone }) {
   const shown = posts.slice(0, limit);
 
   return (
-    <div class={`bm-social bm-social--${template}`}>
-      {shown.map((post) => (
+    <SocialPages template={template} posts={shown} showMeta={cfg.show_meta !== false} />
+  );
+}
+
+/** How long one page of posts stays on screen. */
+const SOCIAL_PAGE_MS = 8000;
+
+/**
+ * SocialPages lays the posts out for the zone's actual size and pages through
+ * whatever does not fit, cross-fading between pages.
+ */
+function SocialPages({
+  template,
+  posts,
+  showMeta,
+}: {
+  template: string;
+  posts: SocialPost[];
+  showMeta: boolean;
+}) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  const [page, setPage] = useState(0);
+
+  // Zone rects are fixed for the life of a scene, so measuring on mount and on
+  // window resize is enough; no ResizeObserver needed.
+  useEffect(() => {
+    function measure() {
+      const el = hostRef.current;
+      if (el) setSize({ w: el.clientWidth, h: el.clientHeight });
+    }
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, []);
+
+  const plan = planLayout(template, posts.length, size.w, size.h);
+  const pages = pageCount(posts.length, plan.perPage);
+  const current = page % pages;
+
+  // Keyed on the page index and count, never on the posts array: the feed
+  // refetches every 60s, and depending on object identity would restart the page
+  // dwell each time — the same defect that froze scene rotation.
+  useEffect(() => {
+    if (pages <= 1) return;
+    const timer = window.setTimeout(() => setPage((p) => (p + 1) % pages), SOCIAL_PAGE_MS);
+    return () => window.clearTimeout(timer);
+  }, [current, pages]);
+
+  // Keep the index in range when the post count shrinks under us.
+  useEffect(() => {
+    if (page >= pages) setPage(0);
+  }, [page, pages]);
+
+  const slice = posts.slice(current * plan.perPage, current * plan.perPage + plan.perPage);
+  const gridStyle =
+    plan.columns > 1 ? { gridTemplateColumns: `repeat(${plan.columns}, 1fr)` } : undefined;
+
+  return (
+    <div class={`bm-social bm-social--${template}`} ref={hostRef}>
+      {/* The key remounts the page so the fade animation replays. */}
+      <div class="bm-social__page" key={current} style={gridStyle}>
+        {slice.map((post) => (
         <article class="bm-social__post" key={post.id}>
           {post.media_url && post.media_kind === 'image' && (
             <div class="bm-social__media">
@@ -408,7 +470,7 @@ function SocialZone({ zone }: { zone: Zone }) {
             </div>
           )}
           <div class="bm-social__body">
-            {cfg.show_meta !== false && (
+            {showMeta && (
               <header class="bm-social__meta">
                 {post.avatar_url && <img class="bm-social__avatar" src={post.avatar_url} alt="" />}
                 <span class="bm-social__author">{post.author || post.author_handle}</span>
@@ -424,7 +486,8 @@ function SocialZone({ zone }: { zone: Zone }) {
             {post.text && <p class="bm-social__text">{post.text}</p>}
           </div>
         </article>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }

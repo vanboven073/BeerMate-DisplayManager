@@ -5,13 +5,14 @@ phase. Not a diary.
 
 ## Current
 
-- **Branch:** `feature/display-manager-initial-implementation`
-- **Phase:** scene editor added after first on-device run showed the playlist
-  could never be populated; ready for code review #3 (strict).
-- **Last production build:** linux/arm64, verified aarch64 ELF (machine 0xb7),
-  12.3 MB stripped, frontend embedded.
+- **Branch:** `feature/display-manager-initial-implementation` (unpushed)
+- **Phase:** first full production deployment done, 4 August 2026. The Jetson
+  ran `fdf9e98` and now runs `bc34807`. Four defects were found and fixed on real
+  hardware in the process; see "First production deployment" below.
+- **Last production build:** `bc34807`, linux/arm64, verified aarch64 ELF
+  (machine 0xb7), 12.4 MB stripped, frontend embedded.
 - **Backend tests:** passing (`go test ./...`), gofmt and `go vet` clean.
-- **Frontend:** typecheck clean, 47 unit tests passing, ESLint clean.
+- **Frontend:** typecheck clean, 53 unit tests passing, ESLint clean.
 
 ## Completed features
 
@@ -127,28 +128,78 @@ Verified end-to-end against a local instance: create → publish → player stat
 carries the revision; split-screen, edit-with-layout-switch (position and
 stable_id preserved) and the 422 field-error path all confirmed.
 
+## First production deployment (4 August 2026)
+
+Upgraded the Jetson from `fdf9e98` to `bc34807` with `update-jetson.sh`, run from
+the staged bundle. The deployment guide held up; the manual bundle staging in
+stage 2 is still the most error-prone step.
+
+Proven on real hardware:
+
+- The Xvfb unit installs, enables and starts, and
+  `systemctl show -p JoinsNamespaceOf` confirms systemd accepts the `/tmp`
+  namespace sharing the capture Chromium depends on.
+- The scene editor and the publish path work end to end. An operator created a
+  scene and published it; `import-legacy-config.sh` then imported the roadmap
+  image, the dashboard website and the countdown as a draft, which published as
+  revision 4. `playlist_revision` had been `0` since install.
+- The legacy Bash kiosk is retired: its autostart entry is disabled and the whole
+  old setup is backed up under `backups/legacy-kiosk-*`.
+
+Four defects surfaced only because content finally reached the screen, and are
+fixed in the commits named above:
+
+1. Player media requests were unauthenticated, so every image 401'd and rendered
+   "Image unavailable" (`4a4f874`).
+2. `useServerClock` returned an unstable object, which made the player refetch
+   state on every render — ~1.5/s — and that churn reset the scene dwell timer,
+   freezing rotation permanently (`522ef22`).
+3. RSS/Atom feeds never extracted images, so a social zone was text-only
+   (`bc34807`).
+4. Tiled social cards let the image take the whole card, clipping the caption
+   (`bc34807`).
+
+Environment correction: the device runs **Chromium 112.0.5615.49**, not ~97. The
+`es2019`/`chrome97` build target and the ESLint bans are therefore stricter than
+the hardware requires. Left as-is deliberately — it costs nothing and keeps the
+player portable — but the constraint documented in `CLAUDE.md` is looser in
+practice.
+
 ## Remaining
 
+- Social zone display work: no paging or scrolling through posts, and the tiled
+  templates are fixed at three columns, so the layout does not adapt to the
+  configured post count. Rows now have definite heights so nothing is clipped,
+  but this is only half done.
+- Remote website login: logging into an authenticated site still needs a keyboard
+  at the Jetson. Design agreed (screenshot polling plus CDP input forwarding, on
+  the Xvfb display) but not built.
+- Rotate the administrator password: it was exposed in a terminal transcript
+  during deployment.
 - Code review #3 (strict final) with remediation.
-- Final 28-point verification pass.
 - Push branch.
-- Deployment instructions written: `docs/deployment-guide.md` (full runbook),
-  linked from README and `docs/jetson-deployment.md`. Still to be validated
-  against a physical Jetson.
 
 ## Known issues
 
-- The Xvfb `:99` gap is closed in code but **unverified on hardware**.
-  `deploy/systemd/beermate-xvfb.service` is installed, enabled and started by
-  `install-jetson.sh` (only when the `xvfb` binary is present; otherwise it
-  installs the unit and warns), refreshed by `update-jetson.sh`, removed by
-  `uninstall-jetson.sh` and checked by `verify-installation.sh`. Because both
-  units set `PrivateTmp=true` and X11 sockets live in `/tmp/.X11-unix`, the
-  service reaches the display through `JoinsNamespaceOf=beermate-xvfb.service`.
-  That namespace-sharing is the one part of this that cannot be validated off the
-  device — if managed captures show the branded fallback on the first real run,
-  look there first. Consequence of the design: restarting `beermate-xvfb` alone
-  leaves the service on a stale namespace; restart the service after it.
+- Restarting `beermate-xvfb` on its own leaves the service holding a stale `/tmp`
+  namespace, because it reaches the X socket via
+  `JoinsNamespaceOf=beermate-xvfb.service`. Always restart
+  `beermate-display-manager` afterwards. `update-jetson.sh` orders this correctly;
+  a human running `systemctl restart beermate-xvfb` will not.
+- `run-player.sh` sends Chromium's stdout and stderr to `/dev/null`, so a player
+  that will not start gives an operator nothing to diagnose from. It also has no
+  guard against a second instance being launched against the same
+  `--user-data-dir`, which Chromium answers with "Opening in existing browser
+  session" and an immediate exit — read as a crash loop by the supervisor.
+- Instagram video posts cannot be played. rss.app (and Instagram generally)
+  expose only the cover frame as `<media:content medium="image">`; no video URL
+  exists in the feed. Uploading MP4s to the media library is the only route to
+  moving footage.
+- Social media URLs are refreshed on every poll, which keeps them alive while a
+  post is still in the feed window. A post that has aged out of the feed but is
+  still approved or pinned will eventually show a broken image, because its signed
+  CDN URL stops being renewed. Ingesting images into the media store is the
+  durable fix if that becomes a problem.
 - `install-jetson.sh` expects the binary at the release-directory root while
   `make` writes it to `dist/`, so the operator must stage a bundle by hand. A
   `make package` target would close this.
@@ -188,12 +239,23 @@ typography tokens from the brandbook applied throughout.
 
 ## Deployment status
 
-Scripts written and syntax-checked; **not yet run on a physical Jetson**. Device
-verification (`scripts/verify-installation.sh`) is the remaining on-device step.
+**Deployed and running** on the Jetson as of 4 August 2026, version `bc34807`,
+reached over Tailscale at `100.75.229.42:8080`. `verify-installation.sh` passes
+every critical check including the new Xvfb one. Repeat deployments use
+`update-jetson.sh` from a staged bundle; `install-jetson.sh` is only for a fresh
+device.
+
+Not yet exercised on hardware: managed/authenticated website capture. Xvfb and the
+namespace sharing are confirmed present, but no managed site has been rendered
+through them, so that path is installed rather than proven.
 
 ## Next recommended actions
 
-1. Run code review #3 (strict), remediate.
-2. Final verification checklist; commit and push.
-3. On the Jetson: run `install-jetson.sh`, then `verify-installation.sh`, then
-   `import-legacy-config.sh`; review and publish the imported draft.
+1. Rotate the administrator password (exposed during deployment).
+2. Social zone display work: adapt the tiled layout to the configured post count
+   and page or scroll through more posts than fit.
+3. Remote website login, per
+   `docs/superpowers/specs/2026-08-04-remote-website-login-design.md`.
+4. Add a `make package` target so the bundle staging in deployment stage 2 stops
+   being manual.
+5. Run code review #3 (strict), remediate, and push the branch.
