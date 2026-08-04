@@ -49,6 +49,11 @@ if [ -f "${RELEASE_DIR}/deploy/systemd/${BM_SERVICE}.service" ]; then
   systemctl daemon-reload
 fi
 
+# Refresh the virtual display while the service is still stopped: the service
+# joins this unit's /tmp namespace at start, so restarting Xvfb underneath a
+# running service would leave it holding a stale namespace.
+bm_install_xvfb_unit "${RELEASE_DIR}"
+
 bm_info "starting the service"
 systemctl start "${BM_SERVICE}"
 

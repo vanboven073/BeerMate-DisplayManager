@@ -51,10 +51,27 @@ if [ -z "${BEERMATE_SESSION:-}" ]; then
   cat <<EOF
 
 ${C_YELLOW}Manual step required.${C_RESET}
-The importer needs an authenticated admin session. From your laptop, over
-Tailscale, sign in at  http://<tailscale-ip>:8080/admin  then run, in the
-browser dev console:  document.cookie
-Copy the beermate_session value and re-run:
+The importer needs an authenticated admin session token. Get one either way:
+
+A) On this device, no browser needed (replace admin with your username):
+
+     read -rp  'Admin username: ' BM_ADMIN
+     read -rsp 'Admin password: ' BM_PW; echo
+     BEERMATE_SESSION="\$(printf '{"username":"%s","password":"%s"}' "\${BM_ADMIN}" "\${BM_PW}" \\
+       | curl -fsS -i -X POST -H 'Content-Type: application/json' -d @- \\
+         http://127.0.0.1:8080/api/v1/auth/login \\
+       | tr -d '\\r' | sed -n 's/^[Ss]et-[Cc]ookie: beermate_session=\\([^;]*\\).*/\\1/p')"
+     unset BM_PW
+
+B) In the browser, signed in at http://<tailscale-ip>:8080/admin:
+   DevTools (F12) -> Application -> Storage -> Cookies -> pick the origin ->
+   copy the beermate_session Value.
+
+   Note: 'document.cookie' does NOT work. The session cookie is HttpOnly by
+   design so JavaScript can never read it; only the DevTools cookie panel and
+   the network layer can see it.
+
+Then re-run:
 
   BEERMATE_SESSION=<value> ${SCRIPT_DIR}/import-legacy-config.sh
 

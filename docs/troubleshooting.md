@@ -67,7 +67,14 @@ or the device being logged out), not the service.
 - **Session expired**: the dashboard shows `Reauth needed`. Run Prepare login →
   log in on the Jetson → Finish login. See authenticated-websites.md.
 - **Managed capture fails**: ensure `chromium-browser` and `xvfb` are installed
-  and `browser_enabled: true`.
+  and `browser_enabled: true`. Then check the virtual display is up:
+  `systemctl is-active beermate-xvfb` (the installer enables it, but only when
+  the `xvfb` package was present at install time — if it was not, run
+  `apt-get install -y xvfb && systemctl enable --now beermate-xvfb`).
+- **Managed capture fails with Chromium unable to open display `:99`**: the
+  service shares a private `/tmp` with `beermate-xvfb` to reach the X socket, so
+  restarting Xvfb on its own leaves the service on a stale namespace. Restart the
+  service too: `systemctl restart beermate-display-manager`.
 
 ## A video will not play
 

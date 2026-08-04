@@ -16,6 +16,12 @@ readonly BM_DATA_DIR="/var/lib/beermate-display-manager"
 readonly BM_CONFIG_DIR="/etc/beermate-display-manager"
 readonly BM_BINARY="beermate-display-manager"
 readonly BM_SYSTEMD_UNIT="/etc/systemd/system/${BM_SERVICE}.service"
+# Xvfb virtual display for managed/authenticated website captures. A separate
+# unit so it can be disabled independently on a device that only shows iframe
+# websites.
+readonly BM_XVFB_SERVICE="beermate-xvfb"
+readonly BM_XVFB_UNIT="/etc/systemd/system/${BM_XVFB_SERVICE}.service"
+readonly BM_XVFB_DISPLAY_NUM="99"
 readonly BM_SECRET_FILE="${BM_CONFIG_DIR}/secret.key"
 readonly BM_CONFIG_FILE="${BM_CONFIG_DIR}/config.json"
 
@@ -90,6 +96,47 @@ bm_generate_secret() {
   chown root:"${BM_GROUP}" "${BM_SECRET_FILE}"
   chmod 0640 "${BM_SECRET_FILE}"
   bm_ok "encryption key written to ${BM_SECRET_FILE} (mode 0640, group ${BM_GROUP})"
+}
+
+# bm_install_xvfb_unit installs and starts the Xvfb unit from a release
+# directory. The unit file is always installed when the bundle carries it, so it
+# is available to enable later, but it is only started when the Xvfb binary is
+# actually present: a device that shows only iframe websites does not need the
+# xvfb package, and enabling a unit whose ExecStart is missing would leave a
+# permanently failing service behind. Never fatal — managed websites are one
+# feature, and the rest of the install must succeed without them.
+bm_install_xvfb_unit() {
+  local release_dir="$1"
+  local src="${release_dir}/deploy/systemd/${BM_XVFB_SERVICE}.service"
+
+  if [ ! -f "${src}" ]; then
+    bm_warn "no ${BM_XVFB_SERVICE}.service in the bundle; managed websites will not capture"
+    return 0
+  fi
+
+  bm_info "installing the Xvfb unit"
+  install -o root -g root -m 0644 "${src}" "${BM_XVFB_UNIT}"
+
+  if ! command -v Xvfb >/dev/null 2>&1; then
+    bm_warn "Xvfb is not installed, so the virtual display cannot start"
+    bm_warn "managed and authenticated websites will not capture until you run:"
+    bm_warn "  apt-get install -y xvfb && systemctl enable --now ${BM_XVFB_SERVICE}"
+    bm_warn "iframe websites and everything else work without it"
+    return 0
+  fi
+
+  # Every systemctl call here is guarded: the callers run under `set -e`, so an
+  # unguarded failure would abort the whole install over an optional feature.
+  systemctl daemon-reload || true
+  systemctl enable "${BM_XVFB_SERVICE}" || true
+  # Restart rather than start: on an upgrade this picks up a changed geometry.
+  systemctl restart "${BM_XVFB_SERVICE}" || true
+
+  if systemctl is-active --quiet "${BM_XVFB_SERVICE}"; then
+    bm_ok "Xvfb running on :${BM_XVFB_DISPLAY_NUM}"
+  else
+    bm_warn "${BM_XVFB_SERVICE} did not start; check: journalctl -u ${BM_XVFB_SERVICE} -n 30"
+  fi
 }
 
 # bm_service_active reports whether the service is running.

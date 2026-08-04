@@ -9,6 +9,7 @@
 # Expected layout of the release directory:
 #   ./beermate-display-manager                     (linux/arm64 binary)
 #   ./deploy/systemd/beermate-display-manager.service
+#   ./deploy/systemd/beermate-xvfb.service
 #   ./deploy/autostart/beermate-player.desktop
 #   ./scripts/                                     (this directory)
 set -Eeuo pipefail
@@ -67,6 +68,10 @@ bm_info "installing systemd unit"
 install -o root -g root -m 0644 \
   "${RELEASE_DIR}/deploy/systemd/${BM_SERVICE}.service" "${BM_SYSTEMD_UNIT}"
 
+# The virtual display goes up before the service does: the service joins its
+# /tmp namespace, which only works if that unit is already running.
+bm_install_xvfb_unit "${RELEASE_DIR}"
+
 # Player autostart for the graphical beermate session.
 AUTOSTART_DIR="/home/${BM_USER}/.config/autostart"
 install -d -o "${BM_USER}" -g "${BM_GROUP}" -m 0755 "${AUTOSTART_DIR}"
@@ -112,5 +117,10 @@ echo "  Player:  http://127.0.0.1:8080/player  (opens automatically on the Jetso
 echo "  Admin:   http://<tailscale-ip>:8080/admin"
 echo "  Health:  http://127.0.0.1:8080/health"
 echo "  Logs:    journalctl -u ${BM_SERVICE} -f"
+echo
+echo "  Managed websites render on Xvfb :${BM_XVFB_DISPLAY_NUM} (${BM_XVFB_SERVICE})."
+echo "  If every website you show can be embedded in an iframe, you can free the"
+echo "  memory: systemctl disable --now ${BM_XVFB_SERVICE}"
+echo "  and set \"browser_enabled\": false in ${BM_CONFIG_FILE}"
 echo
 echo "  First run: open the admin URL over Tailscale to create the administrator."

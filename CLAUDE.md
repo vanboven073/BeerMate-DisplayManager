@@ -110,6 +110,7 @@ CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" \
 | Config dir | `/etc/beermate-display-manager` |
 | Encryption key | `/etc/beermate-display-manager/secret.key` (0640, never in git/backups) |
 | systemd unit | `/etc/systemd/system/beermate-display-manager.service` |
+| Xvfb unit | `/etc/systemd/system/beermate-xvfb.service` |
 | Service name | `beermate-display-manager` |
 | Player autostart | `/home/beermate/.config/autostart/beermate-player.desktop` |
 
@@ -211,7 +212,11 @@ reports machine `0xb7`. Confirm no secrets are staged (`git diff --cached`).
   start uploading large decks.
 - Social platform adapters cover official feeds; Instagram/LinkedIn/etc. require
   the operator to supply an official API/JSON endpoint or use RSS/webhook.
-- The managed browser requires Xvfb and a Chromium binary on the device.
+- The managed browser requires Xvfb and a Chromium binary on the device. The
+  `beermate-xvfb` unit in `deploy/systemd/` provides the display; because both
+  units set `PrivateTmp`, the service reaches its X socket via
+  `JoinsNamespaceOf=`, so restarting Xvfb alone strands the service on a stale
+  `/tmp` namespace — restart the service after it. Untested on hardware.
 
 ## Updating project state
 

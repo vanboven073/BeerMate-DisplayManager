@@ -56,8 +56,9 @@ sudo ./scripts/verify-installation.sh
 ```
 
 `install-jetson.sh` creates the `beermate` service user, the data/config
-directories, the encryption key (0640), installs the binary, the systemd unit and
-the player autostart entry, seeds a default config, and starts the service. It is
+directories, the encryption key (0640), installs the binary, both systemd units
+(the service and `beermate-xvfb`) and the player autostart entry, seeds a default
+config, and starts the service. It is
 safe to re-run for upgrades — it snapshots the database first and never
 regenerates the key.
 
@@ -69,7 +70,9 @@ sudo apt-get install -y chromium-browser xvfb poppler-utils curl
 ```
 
 - `chromium-browser` — the player and the managed browser.
-- `xvfb` — virtual display for managed-website capture.
+- `xvfb` — virtual display for managed-website capture. Install it *before*
+  running the installer: the installer enables the `beermate-xvfb` unit only if
+  the binary is already there.
 - `poppler-utils` — `pdftoppm` for PDF import.
 
 ## 3. First run

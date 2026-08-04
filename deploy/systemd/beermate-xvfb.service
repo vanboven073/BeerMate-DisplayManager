@@ -1,0 +1,51 @@
+[Unit]
+Description=Xvfb virtual display :99 for BeerMate managed websites
+Documentation=https://github.com/vanboven073/BeerMate-DisplayManager
+# Xvfb needs nothing but a running system: no network, no graphical session. It
+# is deliberately independent of the display manager on :0, which drives the
+# physical panel.
+After=local-fs.target
+
+# In [Unit], not [Service]: systemd 237 rejects them in [Service] as an unknown
+# lvalue and the limit silently never applies.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=beermate
+Group=beermate
+
+# The screen geometry must match browser_width/browser_height in
+# /etc/beermate-display-manager/config.json (defaults 1920x1080), or managed
+# website captures come back letterboxed or cropped.
+#
+# -nolisten tcp keeps the display reachable only over its local socket; the
+# capture Chromium runs on the same host, so it never needs TCP.
+ExecStart=/usr/bin/Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp
+
+Restart=on-failure
+RestartSec=5
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=beermate-xvfb
+
+# ---- Hardening -----------------------------------------------------------
+# Kept to directives supported by the systemd shipped with Ubuntu 18.04
+# (systemd 237), matching beermate-display-manager.service.
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectControlGroups=true
+ProtectKernelTunables=true
+RestrictRealtime=true
+
+# PrivateTmp is required here, not merely for hardening: the display manager
+# unit also sets it, and JoinsNamespaceOf= over there only shares /tmp when both
+# units have a private one. That sharing is what lets the capture Chromium reach
+# the X socket this process creates at /tmp/.X11-unix/X99. Do not remove it
+# without removing the JoinsNamespaceOf= on the other unit as well.
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

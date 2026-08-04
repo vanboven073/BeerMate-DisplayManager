@@ -138,11 +138,17 @@ stable_id preserved) and the 422 field-error path all confirmed.
 
 ## Known issues
 
-- Nothing starts `Xvfb :99`. The managed browser launches Chromium with
-  `DISPLAY=:99` but neither the service nor `install-jetson.sh` provides a
-  virtual display, so managed/authenticated websites cannot capture on a fresh
-  install. `docs/deployment-guide.md` step 3.5 ships a systemd unit as the
-  workaround; installing it from `deploy/` would be the proper fix.
+- The Xvfb `:99` gap is closed in code but **unverified on hardware**.
+  `deploy/systemd/beermate-xvfb.service` is installed, enabled and started by
+  `install-jetson.sh` (only when the `xvfb` binary is present; otherwise it
+  installs the unit and warns), refreshed by `update-jetson.sh`, removed by
+  `uninstall-jetson.sh` and checked by `verify-installation.sh`. Because both
+  units set `PrivateTmp=true` and X11 sockets live in `/tmp/.X11-unix`, the
+  service reaches the display through `JoinsNamespaceOf=beermate-xvfb.service`.
+  That namespace-sharing is the one part of this that cannot be validated off the
+  device — if managed captures show the branded fallback on the first real run,
+  look there first. Consequence of the design: restarting `beermate-xvfb` alone
+  leaves the service on a stale namespace; restart the service after it.
 - `install-jetson.sh` expects the binary at the release-directory root while
   `make` writes it to `dist/`, so the operator must stage a bundle by hand. A
   `make package` target would close this.

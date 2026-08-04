@@ -48,10 +48,12 @@ For a short copy-paste cheat sheet once you already know the flow, see
 
 - **Timezone** — `Europe/Amsterdam` unless the display lives elsewhere. It drives
   the schedule and countdowns.
-- **Do you need managed or authenticated websites?** If yes, you must run an
-  Xvfb virtual display ([step 3.5](#35-set-up-xvfb-99-only-if-you-need-managed-websites)).
-  If every website you show can be embedded in an `iframe`, you can skip it and
-  optionally set `browser_enabled: false`.
+- **Do you need managed or authenticated websites?** If yes, just install the
+  `xvfb` package in [step 3.1](#31-install-the-device-packages); the installer
+  sets up and starts the virtual display itself
+  ([step 3.5](#35-xvfb-99-installed-for-you)). If every website you show can be
+  embedded in an `iframe`, you can skip that package and set
+  `browser_enabled: false`.
 - **Who creates the first administrator?** The bootstrap endpoint is open until
   an administrator exists — whoever reaches it first on the tailnet claims the
   account. Plan to do [step 7](#7-create-the-administrator-do-this-immediately)
@@ -148,6 +150,7 @@ release/
 ├── beermate-display-manager                          <- the ARM64 binary
 ├── deploy/
 │   ├── systemd/beermate-display-manager.service
+│   ├── systemd/beermate-xvfb.service
 │   └── autostart/beermate-player.desktop
 └── scripts/
     └── *.sh
@@ -239,39 +242,49 @@ ls /home/beermate
   graphical session, so the player autostart will not fire. On a fresh device,
   create a normal desktop user named `beermate` and enable auto-login first.
 
-### 3.5 Set up Xvfb `:99` (only if you need managed websites)
+### 3.5 Xvfb `:99` (installed for you)
 
-The service launches its capture Chromium with `DISPLAY=:99` but **does not start
-Xvfb itself**, and the installer does not install a unit for it. Without a
-virtual display on `:99`, managed and authenticated websites fail to capture
-(everything else keeps working).
+The capture Chromium for managed and authenticated websites renders on a virtual
+display, `:99`. **The installer handles this for you**: `install-jetson.sh`
+installs `deploy/systemd/beermate-xvfb.service`, then enables and starts it in
+[step 5](#5-install). All you need from this stage is the `xvfb` package from
+[step 3.1](#31-install-the-device-packages) — which the `apt-get` line above already
+installs.
+
+The installer only *starts* the unit if the `Xvfb` binary is present. If you
+skipped the package, the install still succeeds and says so; managed websites
+then stay broken until you run:
 
 ```bash
-sudo tee /etc/systemd/system/beermate-xvfb.service >/dev/null <<'EOF'
-[Unit]
-Description=Xvfb virtual display :99 for BeerMate managed websites
-After=network.target
-
-[Service]
-Type=simple
-User=beermate
-Group=beermate
-ExecStart=/usr/bin/Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo systemctl daemon-reload
+sudo apt-get install -y xvfb
 sudo systemctl enable --now beermate-xvfb
-systemctl is-active beermate-xvfb
 ```
 
-Keep the screen geometry aligned with `browser_width`/`browser_height` in the
-config (default 1920×1080). If you skip this step, set `"browser_enabled": false`
-in [step 5.2](#52-review-the-configuration) so the service does not try.
+Two things worth knowing:
+
+- **Geometry** is fixed at `1920x1080x24` in the unit. If you change
+  `browser_width`/`browser_height` in the config, edit the unit's `ExecStart` to
+  match, or captures come back cropped or letterboxed.
+- **If you never show a managed website** — every site you display can be
+  embedded in an `iframe` — you can reclaim the memory after installing:
+
+  ```bash
+  sudo systemctl disable --now beermate-xvfb
+  ```
+
+  and set `"browser_enabled": false` in
+  [step 5.2](#52-review-the-configuration) so the service does not try. The main
+  service depends on the display with `Wants=`, not `Requires=`, so it starts
+  normally either way.
+
+> **Why a separate unit rather than `ExecStartPre` on the main service?** Both
+> units run with `PrivateTmp=true`, and X11 sockets live in `/tmp/.X11-unix`. The
+> main unit therefore sets `JoinsNamespaceOf=beermate-xvfb.service` so the two
+> share one private `/tmp` — that is what lets the capture Chromium reach the
+> display while keeping `/tmp` isolated from the rest of the system. It also means
+> **restarting `beermate-xvfb` alone leaves the running service holding a stale
+> namespace**: restart `beermate-display-manager` afterwards. `update-jetson.sh`
+> already does this in the right order.
 
 ---
 
@@ -498,7 +511,7 @@ From the dashboard, over Tailscale:
    Overrides expire on their own.
 4. **Websites** — `iframe` for embeddable sites, `managed` for the rest.
    Authenticated sites are always managed and need Xvfb from
-   [step 3.5](#35-set-up-xvfb-99-only-if-you-need-managed-websites).
+   [step 3.5](#35-xvfb-99-installed-for-you).
 5. **Social feeds** — official feeds only (`rss`, `atom`, `json`, `youtube`,
    `webhook`, `manual`); moderation is manual by default.
 
@@ -665,8 +678,8 @@ sudo /opt/BeerMateDisplayManager/scripts/uninstall-jetson.sh --purge  # deletes 
 ```
 
 `--purge` requires typing `DELETE BEERMATE DATA` exactly, and removes the
-encryption key along with everything else. If you have an Xvfb unit from step
-3.5, remove it separately.
+encryption key along with everything else. The `beermate-xvfb` unit is stopped,
+disabled and removed along with the service.
 
 ---
 
@@ -686,6 +699,7 @@ encryption key along with everything else. If you have an Xvfb unit from step
 | Config file (0640, root:beermate) | `…/config.json` |
 | Encryption key (0640, root:beermate) | `…/secret.key` |
 | systemd unit | `/etc/systemd/system/beermate-display-manager.service` |
+| Xvfb unit (optional feature) | `/etc/systemd/system/beermate-xvfb.service` |
 | Player autostart | `/home/beermate/.config/autostart/beermate-player.desktop` |
 | Service / user / group | `beermate-display-manager` / `beermate` / `beermate` |
 
@@ -754,10 +768,12 @@ Precedence: built-in defaults → `config.json` → environment. The unit file s
 1. **Binary location** — `make` writes to `dist/`, the installer expects the
    binary at the bundle root. Stage 2 handles it; a `make package` target would
    remove the manual step.
-2. **Xvfb** — the service uses `:99` but nothing starts it, and the installer
-   ships no unit. Step 3.5 provides one.
-3. **Not yet run on hardware** — as of this writing the scripts are syntax-checked
+2. **Not yet run on hardware** — as of this writing the scripts are syntax-checked
    but have not been executed on a physical Jetson (see `PROJECT_STATE.md`).
-   Expect to iterate on the first real run; capture the output.
-4. **Rollback only follows `update-jetson.sh`** — see the note in
+   Expect to iterate on the first real run; capture the output. The `/tmp`
+   namespace sharing between the service and `beermate-xvfb` (step 3.5) is the
+   part most worth watching: if managed websites show the branded fallback,
+   check `journalctl -u beermate-display-manager` for Chromium failing to open
+   display `:99`.
+3. **Rollback only follows `update-jetson.sh`** — see the note in
    [Day 2](#update-to-a-new-version).

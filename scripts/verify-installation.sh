@@ -73,6 +73,32 @@ else
   bm_warn "player autostart entry missing (the display will not open Chromium on login)"
 fi
 
+# 8. Xvfb virtual display for managed/authenticated websites. Optional by
+# design, so every outcome here is a pass or a warning, never a failure: a
+# device showing only iframe websites is correctly installed without it.
+#
+# Note there is deliberately no check for a /tmp/.X11-unix/X99 socket. Both
+# units run with PrivateTmp, so that socket exists only inside their shared
+# namespace and is not visible from this script.
+if [ -f "${BM_XVFB_UNIT}" ]; then
+  if systemctl is-active --quiet "${BM_XVFB_SERVICE}"; then
+    pass "Xvfb active on :${BM_XVFB_DISPLAY_NUM} (managed websites can capture)"
+    if systemctl is-enabled --quiet "${BM_XVFB_SERVICE}"; then
+      pass "Xvfb enabled at boot"
+    else
+      bm_warn "Xvfb is running but not enabled; it will not come back after a reboot"
+    fi
+  elif ! command -v Xvfb >/dev/null 2>&1; then
+    bm_warn "Xvfb is not installed; managed and authenticated websites cannot capture"
+    bm_warn "  fix: apt-get install -y xvfb && systemctl enable --now ${BM_XVFB_SERVICE}"
+  else
+    bm_warn "${BM_XVFB_SERVICE} is installed but not running; managed websites cannot capture"
+    bm_warn "  check: journalctl -u ${BM_XVFB_SERVICE} -n 30"
+  fi
+else
+  bm_warn "no ${BM_XVFB_SERVICE} unit installed; managed websites cannot capture"
+fi
+
 echo
 if [ "${FAIL}" -eq 0 ]; then
   bm_ok "all critical checks passed"

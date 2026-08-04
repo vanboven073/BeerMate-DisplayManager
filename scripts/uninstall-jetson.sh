@@ -19,6 +19,12 @@ bm_info "stopping and disabling the service"
 systemctl stop "${BM_SERVICE}" 2>/dev/null || true
 systemctl disable "${BM_SERVICE}" 2>/dev/null || true
 rm -f "${BM_SYSTEMD_UNIT}"
+
+bm_info "stopping and disabling the Xvfb virtual display"
+systemctl stop "${BM_XVFB_SERVICE}" 2>/dev/null || true
+systemctl disable "${BM_XVFB_SERVICE}" 2>/dev/null || true
+rm -f "${BM_XVFB_UNIT}"
+
 systemctl daemon-reload
 
 bm_info "removing the player autostart entry"

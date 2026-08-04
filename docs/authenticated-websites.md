@@ -82,3 +82,8 @@ profile directory.
 
 `chromium-browser` and `xvfb`. `browser_enabled: true` in the config, with
 `browser_debug_addr` on a loopback host (the service refuses to start otherwise).
+
+The virtual display the captures render on is a systemd unit of its own,
+`beermate-xvfb`, installed and started by `install-jetson.sh` whenever the `xvfb`
+package is present. Confirm it with `systemctl is-active beermate-xvfb`; without
+it, managed sites fall back to the branded placeholder.
