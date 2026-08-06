@@ -227,6 +227,13 @@ CREATE INDEX idx_posts_fetched    ON social_posts(feed_id, fetched_at);
 -- Exactly one revision has is_draft = 1 at any time. Editing mutates the draft;
 -- publishing stamps published_at on it and clones a fresh draft. The player only
 -- ever reads a published revision, so a half-finished edit can never go live.
+--
+-- Published revisions accumulate, which is what makes rollback and version history
+-- possible, but they cannot grow without limit on an appliance that runs for years:
+-- each one holds a full copy of every scene and zone, and media referenced only by
+-- an ancient revision could never be reclaimed. `keep` marks revisions exempt from
+-- pruning (the live one, and any an operator has pinned); everything else is pruned
+-- to the newest N by the retention job.
 CREATE TABLE playlist_revisions (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     is_draft     INTEGER NOT NULL DEFAULT 1 CHECK (is_draft IN (0,1)),
@@ -235,6 +242,7 @@ CREATE TABLE playlist_revisions (
     created_by   TEXT    NOT NULL DEFAULT '',
     published_by TEXT    NOT NULL DEFAULT '',
     note         TEXT    NOT NULL DEFAULT '',
+    keep         INTEGER NOT NULL DEFAULT 0 CHECK (keep IN (0,1)),
     parent_id    INTEGER REFERENCES playlist_revisions(id) ON DELETE SET NULL
 );
 CREATE INDEX idx_rev_published ON playlist_revisions(published_at DESC);
@@ -270,6 +278,11 @@ CREATE TABLE scenes (
 );
 CREATE INDEX idx_scenes_rev ON scenes(revision_id, position);
 
+-- Zones carry content by (content_type, content_ref) rather than a typed foreign
+-- key, so a new slide type needs no schema change. The cost is that SQLite cannot
+-- enforce referential integrity here, so two things compensate: publish-time
+-- validation rejects dangling references, and the player renders a branded
+-- fallback rather than a blank zone if a reference disappears at runtime.
 CREATE TABLE zones (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     scene_id     INTEGER NOT NULL REFERENCES scenes(id) ON DELETE CASCADE,
@@ -289,6 +302,9 @@ CREATE TABLE zones (
     UNIQUE (scene_id, slot)
 );
 CREATE INDEX idx_zones_scene ON zones(scene_id);
+-- Supports the "is this media/website/feed still referenced by any revision?"
+-- query used by delete protection and orphan cleanup.
+CREATE INDEX idx_zones_content ON zones(content_type, content_ref);
 
 -- ---------------------------------------------------------------------------
 -- Scheduling
@@ -298,10 +314,15 @@ CREATE TABLE schedule_rules (
     id       INTEGER PRIMARY KEY AUTOINCREMENT,
     -- 'weekly' uses weekday; 'date' uses on_date (a one-off / holiday override).
     kind     TEXT    NOT NULL CHECK (kind IN ('weekly','date')),
-    weekday  INTEGER,          -- 0=Monday .. 6=Sunday
+    weekday  INTEGER,          -- 0=Monday .. 6=Sunday (ISO order, NOT Go's Sunday=0)
     on_date  TEXT,             -- 'YYYY-MM-DD'
     enabled  INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)),
     -- NULL on_time/off_time with enabled=1 means "display off all day".
+    --
+    -- When off_time <= on_time the window crosses midnight: '18:00'-'02:00' means
+    -- the display is active from 18:00 until 02:00 the following day. BeerMate runs
+    -- festivals and stadium bars that trade past midnight, so an on<off-only model
+    -- would silently be wrong for the company's own core use case.
     on_time  TEXT,             -- 'HH:MM'
     off_time TEXT,             -- 'HH:MM'
     label    TEXT    NOT NULL DEFAULT '',
@@ -347,6 +368,12 @@ CREATE INDEX idx_emergency_window ON emergency_messages(dismissed_at, starts_at,
 -- ---------------------------------------------------------------------------
 
 -- Single-row table (id = 1) holding the last reported player status.
+--
+-- The player heartbeats every few seconds, but this row is NOT written on every
+-- beat. Live status is held in memory and flushed here at most once a minute (and
+-- immediately on an online/offline edge). The Jetson boots from flash storage, and
+-- a sustained write every few seconds for months is avoidable wear for data that
+-- is worthless after a restart anyway.
 CREATE TABLE player_state (
     id             INTEGER PRIMARY KEY CHECK (id = 1),
     online         INTEGER NOT NULL DEFAULT 0 CHECK (online IN (0,1)),

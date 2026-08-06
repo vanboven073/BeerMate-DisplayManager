@@ -2,8 +2,9 @@
 //
 // Precedence (later wins): built-in defaults -> config file -> environment.
 // The production config file lives at /etc/beermate-display-manager/config.json.
-// Secrets never live in the config file; the encryption key is a separate
-// 0600 file so the config can be readable for troubleshooting.
+// Secrets never live in the config file; the encryption key is a separate file,
+// installed as root:beermate mode 0640, so the config can stay readable for
+// troubleshooting while the key is not.
 package config
 
 import (
@@ -94,6 +95,32 @@ type Config struct {
 	SocialCacheMaxPost int   `json:"social_cache_max_posts"`
 	LowDiskWarnBytes   int64 `json:"low_disk_warn_bytes"`
 
+	// RevisionRetention caps stored playlist revisions. Each revision holds a full
+	// copy of every scene and zone, so without a cap an appliance that runs for
+	// years accumulates them forever and media referenced only by an ancient
+	// revision can never be reclaimed. The live revision is always exempt.
+	RevisionRetention int `json:"revision_retention"`
+
+	// MaxConcurrentHash bounds simultaneous Argon2id operations. Each costs
+	// ~64 MiB, so this is a memory ceiling, not a throughput knob. Login rate
+	// limiting alone does not bound it: limits are per-IP and per-account, and an
+	// attacker varying either could otherwise drive the device out of memory.
+	MaxConcurrentHash int `json:"max_concurrent_hash"`
+
+	// MaxSSEClients caps concurrent event-stream subscribers. The player holds one
+	// and each open admin tab holds another; a forgotten browser window should not
+	// be able to accumulate goroutines indefinitely.
+	MaxSSEClients int `json:"max_sse_clients"`
+
+	// MaxManagedCaptures bounds how many managed-website screenshot loops run at
+	// once. A split-screen scene with several managed sites would otherwise
+	// multiply capture cost across the Jetson's four A57 cores.
+	MaxManagedCaptures int `json:"max_managed_captures"`
+
+	// HeartbeatPersistInterval throttles writing player status to SQLite. Live
+	// status is kept in memory; this only controls how often it is durably stored.
+	HeartbeatPersistInterval time.Duration `json:"-"`
+
 	// ---- Derived (not serialised) ---------------------------------------
 	Location  *time.Location `json:"-"`
 	SecretKey []byte         `json:"-"`
@@ -118,9 +145,9 @@ func Default() Config {
 		MaxPDFPages:        50,
 		BrowserEnabled:     true,
 		BrowserDebugAddr:   "127.0.0.1:9222",
-		BrowserBinary:      "",     // auto-detected
-		BrowserXvfbDisp:    ":99",  // virtual display for capture
-		BrowserRealDisp:    ":0",   // physical display for interactive login
+		BrowserBinary:      "",    // auto-detected
+		BrowserXvfbDisp:    ":99", // virtual display for capture
+		BrowserRealDisp:    ":0",  // physical display for interactive login
 		BrowserWidth:       1920,
 		BrowserHeight:      1080,
 		DPMSEnabled:        true,
@@ -131,6 +158,12 @@ func Default() Config {
 		BackupRetention:    10,
 		SocialCacheMaxPost: 200,
 		LowDiskWarnBytes:   1 << 30, // 1 GiB
+
+		RevisionRetention:        25,
+		MaxConcurrentHash:        2,
+		MaxSSEClients:            16,
+		MaxManagedCaptures:       2,
+		HeartbeatPersistInterval: time.Minute,
 	}
 }
 
@@ -254,6 +287,11 @@ func applyEnv(c *Config) {
 	integer("BEERMATE_BACKUP_RETENTION", &c.BackupRetention)
 	integer("BEERMATE_SOCIAL_CACHE_MAX_POSTS", &c.SocialCacheMaxPost)
 	i64("BEERMATE_LOW_DISK_WARN_BYTES", &c.LowDiskWarnBytes)
+	integer("BEERMATE_REVISION_RETENTION", &c.RevisionRetention)
+	integer("BEERMATE_MAX_CONCURRENT_HASH", &c.MaxConcurrentHash)
+	integer("BEERMATE_MAX_SSE_CLIENTS", &c.MaxSSEClients)
+	integer("BEERMATE_MAX_MANAGED_CAPTURES", &c.MaxManagedCaptures)
+	dur("BEERMATE_HEARTBEAT_PERSIST_INTERVAL", &c.HeartbeatPersistInterval)
 	boolean("BEERMATE_DEV", &c.Dev)
 
 	if v := os.Getenv("BEERMATE_COOKIE_SECURE"); v != "" {
@@ -317,6 +355,21 @@ func (c *Config) finalise() error {
 	if c.BrowserWidth < 320 || c.BrowserHeight < 240 {
 		return errors.New("browser viewport too small")
 	}
+	if c.RevisionRetention < 2 {
+		return errors.New("revision_retention must be >= 2 (live revision plus one to roll back to)")
+	}
+	if c.MaxConcurrentHash < 1 {
+		return errors.New("max_concurrent_hash must be >= 1")
+	}
+	if c.MaxSSEClients < 2 {
+		return errors.New("max_sse_clients must be >= 2 (player plus at least one admin)")
+	}
+	if c.MaxManagedCaptures < 1 {
+		return errors.New("max_managed_captures must be >= 1")
+	}
+	if c.HeartbeatPersistInterval <= 0 {
+		return errors.New("heartbeat_persist_interval must be positive")
+	}
 	return nil
 }
 
@@ -349,16 +402,16 @@ func validateLoopback(addr string) error {
 func ValidateLoopback(addr string) error { return validateLoopback(addr) }
 
 // Subdirectories of DataDir.
-func (c Config) DatabaseDir() string   { return filepath.Join(c.DataDir, "database") }
-func (c Config) UploadsDir() string    { return filepath.Join(c.DataDir, "uploads") }
-func (c Config) ThumbnailsDir() string { return filepath.Join(c.DataDir, "thumbnails") }
-func (c Config) ProfilesDir() string   { return filepath.Join(c.DataDir, "browser-profiles") }
-func (c Config) BackupsDir() string    { return filepath.Join(c.DataDir, "backups") }
-func (c Config) CacheDir() string      { return filepath.Join(c.DataDir, "cache") }
+func (c Config) DatabaseDir() string    { return filepath.Join(c.DataDir, "database") }
+func (c Config) UploadsDir() string     { return filepath.Join(c.DataDir, "uploads") }
+func (c Config) ThumbnailsDir() string  { return filepath.Join(c.DataDir, "thumbnails") }
+func (c Config) ProfilesDir() string    { return filepath.Join(c.DataDir, "browser-profiles") }
+func (c Config) BackupsDir() string     { return filepath.Join(c.DataDir, "backups") }
+func (c Config) CacheDir() string       { return filepath.Join(c.DataDir, "cache") }
 func (c Config) SocialCacheDir() string { return filepath.Join(c.DataDir, "social-cache") }
-func (c Config) RuntimeDir() string    { return filepath.Join(c.DataDir, "runtime") }
-func (c Config) DatabasePath() string  { return filepath.Join(c.DatabaseDir(), "beermate.db") }
-func (c Config) SecretPath() string    { return filepath.Join(c.ConfigDir, SecretFileName) }
+func (c Config) RuntimeDir() string     { return filepath.Join(c.DataDir, "runtime") }
+func (c Config) DatabasePath() string   { return filepath.Join(c.DatabaseDir(), "beermate.db") }
+func (c Config) SecretPath() string     { return filepath.Join(c.ConfigDir, SecretFileName) }
 
 // DataDirs lists every directory that must exist at startup.
 func (c Config) DataDirs() []string {

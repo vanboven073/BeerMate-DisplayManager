@@ -1,0 +1,84 @@
+[Unit]
+Description=BeerMate Display Manager
+Documentation=https://github.com/vanboven073/BeerMate-DisplayManager
+# The service needs the network up to be reachable over Tailscale, but must not
+# block boot forever if the network is slow: After (ordering) without Requires.
+After=network-online.target
+Wants=network-online.target
+# The capture Chromium for managed/authenticated websites renders on the Xvfb
+# virtual display. Wants (not Requires) so a device that only shows iframe
+# websites — or has browser_enabled=false — still starts normally if that unit
+# is disabled or Xvfb is not installed.
+After=beermate-xvfb.service
+Wants=beermate-xvfb.service
+# Both units set PrivateTmp=true, which would give each its own /tmp and hide the
+# X socket at /tmp/.X11-unix/X99 from the capture Chromium. Joining that unit's
+# namespace shares one private /tmp between the two: isolated from the rest of
+# the system, visible to each other. Only takes effect while beermate-xvfb is
+# running, and is ignored — not an error — when it is not.
+#
+# This is a [Unit] directive (systemd.unit(5)); in [Service] it is silently
+# ignored as an unknown assignment, which would break managed captures with no
+# obvious cause.
+JoinsNamespaceOf=beermate-xvfb.service
+
+# If it fails 5 times in 60s, stop trying and let an operator look; otherwise a
+# genuinely broken build would spin forever. These belong in [Unit]: systemd 237
+# (Ubuntu 18.04) rejects them in [Service] with "Unknown lvalue" and silently
+# falls back to the 5-in-10s default, which RestartSec=5 never trips — verified
+# with systemd-analyze verify on the device.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=beermate
+Group=beermate
+
+# The binary reads its config from /etc and writes data to /var/lib.
+WorkingDirectory=/opt/BeerMateDisplayManager
+Environment=BEERMATE_CONFIG_DIR=/etc/beermate-display-manager
+Environment=BEERMATE_DATA_DIR=/var/lib/beermate-display-manager
+# DISPLAY and XAUTHORITY let the DPMS controller talk to the graphical session
+# that the beermate user is auto-logged into. Adjust XAUTHORITY if the display
+# manager places the cookie elsewhere.
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/beermate/.Xauthority
+
+ExecStart=/opt/BeerMateDisplayManager/beermate-display-manager
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Restart on any unclean exit, with a short delay so a crash loop backs off a
+# little rather than hammering. An unattended display should recover on its own.
+Restart=on-failure
+RestartSec=5
+# Note: the start rate limit lives in [Unit], not here — see StartLimit* above.
+
+# Give in-flight uploads and the managed browser time to shut down cleanly.
+TimeoutStopSec=30
+KillSignal=SIGTERM
+
+# Journal logging.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=beermate-display-manager
+
+# ---- Hardening -----------------------------------------------------------
+# Kept to directives supported by the systemd shipped with Ubuntu 18.04
+# (systemd 237). Newer options (ProtectClock, SystemCallFilter sets, etc.) are
+# deliberately omitted so the unit does not fail to parse on the Jetson.
+NoNewPrivileges=true
+# X11 sockets live in /tmp/.X11-unix, so this private /tmp would hide the Xvfb
+# display from the capture Chromium if the two units did not share a namespace.
+# See JoinsNamespaceOf= in the [Unit] section above.
+PrivateTmp=true
+ProtectSystem=full
+# The service must write its data dir and read its config dir.
+ReadWritePaths=/var/lib/beermate-display-manager
+ReadOnlyPaths=/etc/beermate-display-manager
+ProtectControlGroups=true
+ProtectKernelTunables=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=multi-user.target

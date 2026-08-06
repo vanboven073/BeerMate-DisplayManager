@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#0E1821" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>BeerMate Display Manager</title>
+
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" href="/brand/logo/beermate-favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <!--
+      The two brand faces are preloaded because both are used above the fold on
+      every screen; without this the first paint flashes in the fallback face.
+      Only the latin subsets are preloaded - latin-ext loads on demand.
+    -->
+    <link
+      rel="preload"
+      href="/brand/fonts/PlusJakartaSans-Variable-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/brand/fonts/Epilogue-Variable-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+
+    <!--
+      Server-injected bootstrap. The Go handler replaces the placeholder token
+      per request; the player receives its access token here because it runs
+      unattended and has no login. The admin shell receives an empty token.
+    -->
+    <script id="bm-bootstrap" type="application/json">
+      __BEERMATE_BOOTSTRAP__
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <noscript>
+      <div style="padding: 2rem; font-family: sans-serif">
+        <h1>BeerMate Display Manager</h1>
+        <p>This application requires JavaScript.</p>
+      </div>
+    </noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

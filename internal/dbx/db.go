@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -39,6 +40,15 @@ type DB struct {
 //	synchronous=NORMAL correct under WAL, far fewer fsyncs than FULL (SD card wear)
 //	busy_timeout=5000  wait rather than fail when the writer holds the lock
 //	foreign_keys=ON    SQLite defaults this OFF; we rely on cascade deletes
+//	temp_store=MEMORY  keeps sort/spill traffic off the flash
+//	cache_size=-8000   8 MiB page cache (negative = KiB); small enough for Chromium
+//
+// Every one of these except journal_mode is a *per-connection* setting, so they
+// belong in the DSN, where the driver replays them on each new connection in the
+// pool. Issuing them once via ExecContext after Open would configure only whichever
+// connection happened to serve that statement and leave the rest of the pool on
+// SQLite's defaults — meaning most writes would still fsync, which is exactly the
+// flash wear this is meant to avoid.
 func Open(o Options) (*DB, error) {
 	if o.Logger == nil {
 		o.Logger = slog.Default()
@@ -47,7 +57,23 @@ func Open(o Options) (*DB, error) {
 	if o.ReadOnly {
 		mode = "ro"
 	}
-	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&mode=%s", o.Path, mode)
+
+	pragmas := []string{
+		"busy_timeout(5000)",
+		"foreign_keys(1)",
+	}
+	if !o.ReadOnly {
+		pragmas = append(pragmas,
+			"journal_mode(WAL)",
+			"synchronous(NORMAL)",
+			"temp_store(MEMORY)",
+			"cache_size(-8000)",
+		)
+	}
+	dsn := fmt.Sprintf("file:%s?mode=%s", o.Path, mode)
+	for _, p := range pragmas {
+		dsn += "&_pragma=" + p
+	}
 
 	sdb, err := sql.Open("sqlite", dsn)
 	if err != nil {
@@ -69,18 +95,16 @@ func Open(o Options) (*DB, error) {
 	}
 
 	if !o.ReadOnly {
-		for _, p := range []string{
-			"PRAGMA journal_mode=WAL",
-			"PRAGMA synchronous=NORMAL",
-			"PRAGMA temp_store=MEMORY",
-			// 8 MiB page cache. Negative = KiB. Enough for our working set,
-			// small enough to leave room for Chromium.
-			"PRAGMA cache_size=-8000",
-		} {
-			if _, err := sdb.ExecContext(ctx, p); err != nil {
-				sdb.Close()
-				return nil, fmt.Errorf("%s: %w", p, err)
-			}
+		// journal_mode is persisted in the database file rather than per
+		// connection, so it is verified once here; the rest ride on the DSN.
+		var journal string
+		if err := sdb.QueryRowContext(ctx, "PRAGMA journal_mode").Scan(&journal); err != nil {
+			sdb.Close()
+			return nil, fmt.Errorf("read journal_mode: %w", err)
+		}
+		if !strings.EqualFold(journal, "wal") {
+			sdb.Close()
+			return nil, fmt.Errorf("journal_mode is %q, expected WAL", journal)
 		}
 	}
 

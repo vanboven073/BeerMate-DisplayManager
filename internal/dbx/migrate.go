@@ -133,14 +133,14 @@ func (d *DB) SchemaVersion(ctx context.Context) (int, error) {
 // BEGIN...END blocks so that CREATE TRIGGER bodies survive intact.
 func splitStatements(sqlText string) []string {
 	var (
-		out       []string
-		cur       strings.Builder
-		inStr     bool
-		strDelim  rune
-		inLine    bool
-		inBlock   bool
-		beginDep  int
-		runes     = []rune(sqlText)
+		out      []string
+		cur      strings.Builder
+		inStr    bool
+		strDelim rune
+		inLine   bool
+		inBlock  bool
+		beginDep int
+		runes    = []rune(sqlText)
 	)
 
 	wordBefore := func(i int) string {

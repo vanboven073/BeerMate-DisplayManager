@@ -1,0 +1,51 @@
+{
+  "//": "Example configuration. Copy to /etc/beermate-display-manager/config.json and edit.",
+  "//listen_addr": "0.0.0.0:8080 exposes the admin UI over the Tailscale interface. There is no public port forwarding.",
+  "listen_addr": "0.0.0.0:8080",
+
+  "//timezone": "IANA zone. Drives the display schedule and countdowns.",
+  "timezone": "Europe/Amsterdam",
+
+  "log_level": "info",
+  "log_format": "json",
+
+  "//trust_proxy_headers": "Leave false for a direct Tailscale connection; true only behind a trusted reverse proxy.",
+  "trust_proxy_headers": false,
+
+  "//uploads": "Size caps in bytes.",
+  "max_image_bytes": 26214400,
+  "max_video_bytes": 536870912,
+  "max_pdf_bytes": 67108864,
+  "max_pdf_pages": 50,
+
+  "//browser": "The DevTools debug address MUST be a loopback host:port. The service refuses to start otherwise.",
+  "browser_enabled": true,
+  "browser_debug_addr": "127.0.0.1:9222",
+  "browser_binary": "",
+  "browser_xvfb_display": ":99",
+  "browser_real_display": ":0",
+  "browser_width": 1920,
+  "browser_height": 1080,
+
+  "//display": "xset drives DPMS on the Jetson; use 'mock' for development.",
+  "dpms_enabled": true,
+  "dpms_driver": "xset",
+  "dpms_display": ":0",
+
+  "//tools": "External binaries used for PDF import and video probing.",
+  "pdftoppm_path": "pdftoppm",
+  "ffmpeg_path": "ffmpeg",
+
+  "//limits": "Bounded growth for an appliance that runs for years.",
+  "backup_retention": 10,
+  "revision_retention": 25,
+  "social_cache_max_posts": 200,
+  "low_disk_warn_bytes": 1073741824,
+  "max_concurrent_hash": 2,
+  "max_sse_clients": 16,
+  "max_managed_captures": 2,
+
+  "//sessions": "Durations accept Go duration strings.",
+  "session_idle_timeout": "12h",
+  "session_max_lifetime": "168h"
+}
